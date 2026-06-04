@@ -724,13 +724,32 @@ body.auth-locked .auth-screen{display:flex}
   <div class="mb"><input type="hidden" id="rec-id">
     <div class="form-grid">
       <div class="fg"><label>Tipo *</label><select id="rec-tipo"><option value="salario">Salário</option><option value="13">13º Salário</option><option value="ferias">Férias</option><option value="extra">Renda Extra</option><option value="bonus">Bonificação</option><option value="reembolso">Reembolso</option><option value="outro">Outro</option></select></div>
-      <div class="fg"><label>Pessoa *</label><select id="rec-pessoa"><option value="p1">Pessoa 1</option><option value="p2">Pessoa 2</option><option value="ambos">Ambos</option></select></div>
+      <div class="fg"><label>Pessoa *</label><select id="rec-pessoa"></select></div>
       <div class="fg s2"><label>Descrição *</label><input type="text" id="rec-desc" placeholder="Ex: Salário março"></div>
       <div class="fg"><label>Valor (R$) *</label><input type="text" id="rec-valor" placeholder="0,00" oninput="mask(this)"></div>
       <div class="fg"><label>Data de Recebimento</label><input type="date" id="rec-data"></div>
-      <div class="fg"><label>Mês *</label><select id="rec-mes"></select></div>
-      <div class="fg"><label>Ano *</label><select id="rec-ano"></select></div>
-      <div class="fg"><label>Recorrente?</label><select id="rec-rec"><option value="nao">Não</option><option value="sim">Sim</option></select></div>
+      <div class="fg"><label>Mês *</label><select id="rec-mes" onchange="recUpdatePreview()"></select></div>
+      <div class="fg"><label>Ano *</label><select id="rec-ano" onchange="recUpdatePreview()"></select></div>
+      <div class="fg s2">
+        <label>Recorrência</label>
+        <label class="toggle-row" for="rec-rec">
+          <span class="toggle-lbl">🔁 Receita recorrente — repete todo mês</span>
+          <span class="tgl"><input type="checkbox" id="rec-rec" onchange="recToggle()"><span class="tgl-track"></span></span>
+        </label>
+        <div id="rec-rec-opts" style="display:none;margin-top:.65rem;padding:.7rem .9rem;background:var(--success-l);border:1px solid #a7f3d0;border-radius:var(--r-sm)">
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
+            <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Repetir por:</label>
+            <select id="rec-nmes" onchange="recUpdatePreview()" style="font-size:.82rem;flex:1">
+              <option value="ano">Restante do ano (até Dez)</option>
+              <option value="3">3 meses</option>
+              <option value="6">6 meses</option>
+              <option value="12" selected>12 meses</option>
+              <option value="24">24 meses</option>
+            </select>
+          </div>
+          <div id="rec-preview" style="font-size:.77rem;color:var(--success-d);font-weight:600"></div>
+        </div>
+      </div>
       <div class="fg s2"><label>Observações</label><textarea id="rec-obs"></textarea></div>
     </div>
   </div>
@@ -1645,14 +1664,39 @@ function openMReceita(item){
   document.getElementById('rec-mtitle').textContent=item?'Editar Receita':'Nova Receita';
   document.getElementById('rec-id').value=item?.id||'';
   document.getElementById('rec-tipo').value=item?.tipo||'salario';
+  document.getElementById('rec-pessoa').innerHTML=`<option value="p1">${escHtml(APP.config.p1)}</option><option value="p2">${escHtml(APP.config.p2)}</option><option value="ambos">Ambos</option>`;
   document.getElementById('rec-pessoa').value=item?.pessoa||'p1';
   document.getElementById('rec-desc').value=item?.descricao||'';
   document.getElementById('rec-valor').value=item?.valor||'';
   document.getElementById('rec-data').value=item?.data||'';
-  document.getElementById('rec-rec').value=item?.recorrente||'nao';
+  const ck=document.getElementById('rec-rec');
+  ck.checked=item?.recorrente==='sim';
+  // Painel de repetição só faz sentido em criação nova
+  document.getElementById('rec-rec-opts').style.display=ck.checked&&!item?.id?'block':'none';
   document.getElementById('rec-obs').value=item?.obs||'';
   fillMA('rec-mes','rec-ano',item?.mes,item?.ano);
+  recUpdatePreview();
   openM('mod-receita');
+}
+function recToggle(){
+  const ck=document.getElementById('rec-rec');
+  const isNew=!document.getElementById('rec-id').value;
+  document.getElementById('rec-rec-opts').style.display=ck.checked&&isNew?'block':'none';
+  if(ck.checked&&isNew)recUpdatePreview();
+}
+function recGetMeses(){
+  const mes=+V('rec-mes'),ano=+V('rec-ano');
+  const nVal=V('rec-nmes');
+  let n;
+  if(nVal==='ano'){n=Math.max(1,13-mes);}else{n=+nVal||12;}
+  return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
+}
+function recUpdatePreview(){
+  const opts=document.getElementById('rec-rec-opts');
+  if(!opts||opts.style.display==='none')return;
+  const meses=recGetMeses();
+  const labels=meses.map(({m,a})=>`${MONTHS[m-1].slice(0,3)}/${String(a).slice(2)}`);
+  document.getElementById('rec-preview').textContent=`📅 ${meses.length} entrada(s): ${labels.join(' · ')}`;
 }
 function editReceita(id){openMReceita(APP.receitas.find(r=>r.id===id))}
 function saveReceita(){
@@ -1661,8 +1705,24 @@ function saveReceita(){
   if(!desc){toast('Preencha a descrição','error');return}
   if(!parseBRL(val)){toast('Informe um valor válido','error');return}
   const id=document.getElementById('rec-id').value;
-  const d={id:id||gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,data:V('rec-data'),mes:V('rec-mes'),ano:V('rec-ano'),recorrente:V('rec-rec'),obs:V('rec-obs')};
-  upsert('receitas',d,id);save();closeM('mod-receita');toast('Receita salva!','success');renderReceitas();
+  const isRec=document.getElementById('rec-rec').checked;
+  const isNew=!id;
+
+  if(isNew&&isRec){
+    // Cria uma entrada por mês selecionado
+    const grupoId=gid();
+    const meses=recGetMeses();
+    meses.forEach(({m,a})=>{
+      APP.receitas.push({id:gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,data:V('rec-data'),mes:m,ano:a,recorrente:'sim',recGrupoId:grupoId,obs:V('rec-obs')});
+    });
+    save();closeM('mod-receita');
+    toast(`🔁 ${meses.length} receita(s) criada(s) automaticamente!`,'success',4000);
+  }else{
+    const d={id:id||gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,data:V('rec-data'),mes:V('rec-mes'),ano:V('rec-ano'),recorrente:isRec?'sim':'nao',obs:V('rec-obs')};
+    upsert('receitas',d,id);
+    save();closeM('mod-receita');toast('Receita salva!','success');
+  }
+  renderReceitas();
 }
 
 // ═══ INVESTIMENTOS ═══
