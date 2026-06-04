@@ -297,24 +297,45 @@ body.auth-locked .auth-screen{display:flex}
 .toggle-status{font-size:.72rem;font-weight:600;color:var(--text3);margin-top:.25rem}
 
 /* ── RESPONSIVE ── */
+/* ── MOBILE BOTTOM NAV ── */
+.mobile-bnav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:95;background:var(--surface);border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom,0px)}
+.mobile-bnav-inner{display:flex}
+.mbn-item{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:.5rem .15rem .45rem;cursor:pointer;color:var(--text3);font-size:.58rem;font-weight:600;letter-spacing:.02em;gap:1px;transition:color var(--t);-webkit-tap-highlight-color:transparent}
+.mbn-item.active{color:var(--primary)}
+.mbn-item .mbn-icon{font-size:1.3rem;line-height:1}
+/* ── RESPONSIVE ── */
 @media(max-width:900px){
   .sidebar{transform:translateX(-100%)}
   .sidebar.open{transform:translateX(0)}
   .sidebar-overlay.show{display:block}
-  .header{left:0}
-  .hamburger{display:flex}
-  .main{margin-left:0;padding:1rem}
+  .header{left:0;padding:0 .75rem;gap:.5rem}
+  .hamburger{display:none} /* substituído pelo bottom nav */
+  .main{margin-left:0;padding:.9rem .9rem calc(70px + env(safe-area-inset-bottom,0px))}
   .scards{grid-template-columns:repeat(2,1fr)}
   .two-col{grid-template-columns:1fr}
   .form-grid{grid-template-columns:1fr}
   .fg.s2,.fg.s3{grid-column:span 1}
   .person-chips{display:none}
   .auth-session{display:none}
+  .header-title{font-size:.95rem}
+  .btn-header-hide{display:none} /* esconde botões pesados no header */
+  .mobile-bnav{display:block}
+  .modal{max-height:92vh;overflow-y:auto}
+  .modal.xl{width:min(98vw,780px)}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .nav-item{padding:.75rem 1.4rem;font-size:.87rem} /* touch targets maiores */
 }
 @media(max-width:480px){
   .scards{grid-template-columns:1fr}
   .wish-grid{grid-template-columns:1fr}
-  .month-nav{gap:.2rem}
+  .month-nav{gap:.15rem}
+  .month-nav select{font-size:.75rem}
+  .main{padding:.7rem .7rem calc(70px + env(safe-area-inset-bottom,0px))}
+  .modal{border-radius:var(--r) var(--r) 0 0;margin-top:auto}
+  .moverlay{align-items:flex-end}
+  .sh{flex-direction:column;align-items:flex-start;gap:.5rem}
+  .sh-actions{width:100%;display:flex;gap:.4rem;flex-wrap:wrap}
+  .sh-actions .btn{flex:1;justify-content:center;font-size:.78rem}
 }
 </style>
 </head>
@@ -419,8 +440,8 @@ body.auth-locked .auth-screen{display:flex}
     <div class="chip p2"><div class="chip-av" id="av2">E</div><span id="n2">Pessoa 2</span></div>
   </div>
   <div class="auth-session" id="authSession"></div>
-  <button class="btn btn-outline btn-sm" onclick="logout()" title="Sair do controle" style="display:none">Sair</button>
-  <button class="btn btn-outline btn-sm" onclick="loadFromGS()" title="Carregar dados do Google Sheets">⬇ Carregar</button>
+  <button class="btn btn-outline btn-sm btn-header-hide" onclick="logout()" title="Sair do controle" style="display:none">Sair</button>
+  <button class="btn btn-outline btn-sm btn-header-hide" onclick="loadFromGS()" title="Carregar dados do Google Sheets">⬇ Carregar</button>
   <button class="btn btn-outline btn-sm" onclick="syncGS()">🔄 Sync</button>
 </header>
 
@@ -672,22 +693,22 @@ body.auth-locked .auth-screen{display:flex}
       <button class="btn btn-primary" onclick="salvarConfig()">Salvar Nomes</button>
     </div>
     <div class="card">
-      <div class="card-title mb2">🔐 Acesso</div>
-      <p class="text-muted" style="font-size:.82rem;margin-bottom:.75rem">Sessao atual: <strong id="cfg-auth-user">-</strong></p>
-      <div class="flex gap">
-        <button class="btn btn-outline" onclick="openAuthReset()">Trocar Senhas</button>
-        <button class="btn btn-outline" onclick="logout()">Sair</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title mb2">🔗 Google Sheets</div>
+      <div class="card-title mb2">🔗 Google Sheets — Sincronização</div>
       <div class="fg mb1"><label>URL do Web App (Apps Script)</label><input type="url" id="cfg-gs" placeholder="https://script.google.com/macros/s/..."></div>
-      <p class="text-muted" style="font-size:.78rem;margin-bottom:.75rem">Publique o Apps Script como Web App e cole a URL aqui para sincronizar dados.</p>
-      <div class="flex gap">
-        <button class="btn btn-primary" onclick="salvarGS()">Conectar</button>
+      <p class="text-muted" style="font-size:.78rem;margin-bottom:.75rem">Publique o Apps Script como Web App (acesso: Qualquer pessoa) e cole a URL aqui. Os dados serão sincronizados automaticamente entre todos os dispositivos.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+        <button class="btn btn-primary" onclick="salvarGS()">✅ Conectar</button>
         <button class="btn btn-outline" onclick="testarConexao()">🔍 Testar</button>
         <button class="btn btn-outline" onclick="loadFromGS()" title="Buscar dados da planilha">⬇ Carregar</button>
         <button class="btn btn-outline" onclick="syncGS()" title="Enviar dados para a planilha">🔄 Sync</button>
+      </div>
+      <div id="gs-share-wrap" style="display:none;padding:.7rem .9rem;background:var(--success-l);border:1px solid #a7f3d0;border-radius:var(--r-sm)">
+        <div style="font-size:.8rem;font-weight:600;color:var(--success-d);margin-bottom:.4rem">📤 Link de acesso compartilhado</div>
+        <div style="font-size:.75rem;color:var(--text2);margin-bottom:.5rem">Envie este link para qualquer pessoa. Ao abrir, ela verá e editará os mesmos dados automaticamente.</div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input type="text" id="gs-share-url" readonly style="flex:1;font-size:.72rem;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-sm);padding:.3rem .5rem;color:var(--text2)">
+          <button class="btn btn-outline btn-sm" onclick="copiarLinkGS()" style="white-space:nowrap">📋 Copiar</button>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -1364,6 +1385,7 @@ function acBtns(editFn,delFn,extra=''){return`<div class="flex gap">${extra}<but
 // ═══ NAVIGATION ═══
 const MOD_TITLES={dashboard:'Dashboard',tabela:'Tabela Mensal',receitas:'Salários e Receitas',investimentos:'Investimentos',fixas:'Despesas Fixas',variaveis:'Despesas Variáveis',cartoes:'Cartões de Crédito',parcelas:'Parcelas Futuras',tarefas:'Tarefas',desejos:'Desejos',config:'Configurações'};
 
+const MBN_MODS=['dashboard','tabela','cartoes','tarefas'];
 function go(mod){
   document.querySelectorAll('.module').forEach(m=>m.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1372,6 +1394,10 @@ function go(mod){
   document.querySelectorAll('.nav-item').forEach(n=>{if(n.getAttribute('onclick')?.includes(`'${mod}'`))n.classList.add('active');});
   document.getElementById('htitle').textContent=MOD_TITLES[mod]||mod;
   cMod=mod;
+  // Atualiza bottom nav mobile
+  MBN_MODS.forEach(m=>{const btn=document.getElementById('mbn-'+m);if(btn)btn.classList.toggle('active',m===mod);});
+  const menuBtn=document.getElementById('mbn-menu');
+  if(menuBtn)menuBtn.classList.toggle('active',!MBN_MODS.includes(mod));
   if(window.innerWidth<=900)toggleSidebar(false);
   render(mod);
 }
@@ -2942,6 +2968,7 @@ function renderConfig(){
   document.getElementById('cfg-p1').value=APP.config.p1||'';
   document.getElementById('cfg-p2').value=APP.config.p2||'';
   document.getElementById('cfg-gs').value=APP.config.gsUrl||'';
+  atualizarLinkCompartilhado();
   const el=document.getElementById('cat-list');
   el.innerHTML=APP.config.cats.map((c,i)=>`<div class="flex flex-between flex-center" style="padding:.28rem 0;border-bottom:1px solid var(--border)"><span style="font-size:.85rem">${c}</span><button class="btn btn-ghost btn-sm btn-icon" onclick="rmCat(${i})">✕</button></div>`).join('');
 }
@@ -2958,13 +2985,29 @@ function salvarGS(){
   if(APP.config.gsUrl){
     setSyncUI('ok','Google Sheets');
     startAutoSync();
+    atualizarLinkCompartilhado();
     toast('✅ Google Sheets conectado! Sincronização automática ativada.','success',4000);
     if(navigator.onLine)loadFromGS();
   }else{
     stopAutoSync();
     setSyncUI('','Local');
+    document.getElementById('gs-share-wrap').style.display='none';
     toast('Desconectado do Google Sheets','warning');
   }
+}
+function atualizarLinkCompartilhado(){
+  const wrap=document.getElementById('gs-share-wrap');
+  const inp=document.getElementById('gs-share-url');
+  if(!APP.config.gsUrl){if(wrap)wrap.style.display='none';return}
+  const base=location.href.split('?')[0];
+  const link=`${base}?gs=${encodeURIComponent(APP.config.gsUrl)}`;
+  if(wrap)wrap.style.display='block';
+  if(inp)inp.value=link;
+}
+function copiarLinkGS(){
+  const inp=document.getElementById('gs-share-url');
+  if(!inp)return;
+  navigator.clipboard.writeText(inp.value).then(()=>toast('📋 Link copiado! Envie para sua esposa.','success',3000)).catch(()=>{inp.select();document.execCommand('copy');toast('📋 Link copiado!','success')});
 }
 function addCat(){const n=document.getElementById('nova-cat').value.trim();if(!n)return;if(!APP.config.cats.includes(n))APP.config.cats.push(n);document.getElementById('nova-cat').value='';save();renderConfig();toast(`Categoria "${n}" adicionada!`,'success')}
 function rmCat(i){APP.config.cats.splice(i,1);save();renderConfig()}
@@ -3182,7 +3225,19 @@ function loadSample(){
 
 // ═══ INIT ═══
 function init(){
-  load();
+  // Auto-detect GS URL from ?gs= query parameter (link compartilhado)
+  const urlParams=new URLSearchParams(location.search);
+  const gsParam=urlParams.get('gs');
+  if(gsParam&&gsParam.startsWith('https://')){
+    load();
+    if(!APP.config.gsUrl){
+      // Primeira vez: salva a URL e carrega dados do GS
+      APP.config.gsUrl=gsParam;
+      LOADING_FROM_GS=true;save();LOADING_FROM_GS=false;
+    }
+  }else{
+    load();
+  }
   document.getElementById('selM').value=cM;
   document.getElementById('selA').value=cA;
   updatePersonUI();
@@ -3223,5 +3278,16 @@ function init(){
 }
 init();
 </script>
+
+<!-- ── MOBILE BOTTOM NAV ── -->
+<nav class="mobile-bnav" id="mbnav">
+  <div class="mobile-bnav-inner">
+    <div class="mbn-item active" id="mbn-dashboard" onclick="go('dashboard')"><span class="mbn-icon">📊</span>Dashboard</div>
+    <div class="mbn-item" id="mbn-tabela" onclick="go('tabela')"><span class="mbn-icon">📋</span>Tabela</div>
+    <div class="mbn-item" id="mbn-cartoes" onclick="go('cartoes')"><span class="mbn-icon">💳</span>Cartões</div>
+    <div class="mbn-item" id="mbn-tarefas" onclick="go('tarefas')"><span class="mbn-icon">✅</span>Tarefas</div>
+    <div class="mbn-item" id="mbn-menu" onclick="toggleSidebar()"><span class="mbn-icon">☰</span>Menu</div>
+  </div>
+</nav>
 </body>
 </html>
