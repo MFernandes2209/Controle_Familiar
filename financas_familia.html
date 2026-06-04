@@ -212,12 +212,18 @@ input[type=color]{height:38px;cursor:pointer;padding:.2rem .4rem}
 
 /* ── WISH CARDS ── */
 .wish-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.9rem}
-.wish-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;transition:box-shadow var(--t)}
+.wish-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;transition:box-shadow var(--t);overflow:hidden}
 .wish-card:hover{box-shadow:var(--sh-md)}
-.wish-card.bought{opacity:.55}
+.wish-card.bought{opacity:.6}
+.wish-card-img{width:calc(100% + 2rem);max-height:170px;object-fit:cover;display:block;margin:-1rem -1rem .85rem;border-radius:var(--r) var(--r) 0 0;cursor:pointer;transition:transform .3s}
+.wish-card-img:hover{transform:scale(1.03)}
 .wish-name{font-weight:600;font-size:.9rem;margin:.35rem 0 .2rem}
 .wish-price{font-family:var(--serif);font-size:1.1rem;color:var(--success-d);font-weight:600}
 .wish-meta{font-size:.72rem;color:var(--text3);margin-top:.3rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.wish-foto-area{border:2px dashed var(--border2);border-radius:var(--r-sm);padding:1.5rem;text-align:center;cursor:pointer;transition:border-color var(--t),background var(--t);background:var(--surface2);position:relative}
+.wish-foto-area:hover{border-color:var(--primary);background:var(--primary-l)}
+.wish-foto-area.has-img{padding:0;border-style:solid}
+.wish-foto-area img{width:100%;max-height:200px;object-fit:cover;border-radius:calc(var(--r-sm) - 2px);display:block}
 
 /* ── DIVIDER ── */
 hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
@@ -310,7 +316,7 @@ body.auth-locked .auth-screen{display:flex}
 }
 </style>
 </head>
-<body class="auth-locked">
+<body>
 
 <section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
   <div class="auth-card">
@@ -411,7 +417,7 @@ body.auth-locked .auth-screen{display:flex}
     <div class="chip p2"><div class="chip-av" id="av2">E</div><span id="n2">Pessoa 2</span></div>
   </div>
   <div class="auth-session" id="authSession"></div>
-  <button class="btn btn-outline btn-sm" onclick="logout()" title="Sair do controle">Sair</button>
+  <button class="btn btn-outline btn-sm" onclick="logout()" title="Sair do controle" style="display:none">Sair</button>
   <button class="btn btn-outline btn-sm" onclick="loadFromGS()" title="Carregar dados do Google Sheets">⬇ Carregar</button>
   <button class="btn btn-outline btn-sm" onclick="syncGS()">🔄 Sync</button>
 </header>
@@ -625,7 +631,10 @@ body.auth-locked .auth-screen{display:flex}
 <div class="module" id="mod-tarefas">
   <div class="sh">
     <div class="sh-title">✅ Tarefas</div>
-    <div class="sh-actions"><button class="btn btn-primary" onclick="openMTarefa(null)">+ Adicionar Tarefa</button></div>
+    <div class="sh-actions">
+      <button class="btn btn-outline btn-sm" onclick="openMImportTarefas()">📋 Importar Planilha</button>
+      <button class="btn btn-primary" onclick="openMTarefa(null)">+ Adicionar Tarefa</button>
+    </div>
   </div>
   <div class="fbar">
     <select id="f-t-s" onchange="renderTarefas()"><option value="">Todos os status</option><option value="pendente">Pendente</option><option value="andamento">Em Andamento</option><option value="concluida">Concluída</option></select>
@@ -737,15 +746,17 @@ body.auth-locked .auth-screen{display:flex}
           <span class="tgl"><input type="checkbox" id="rec-rec" onchange="recToggle()"><span class="tgl-track"></span></span>
         </label>
         <div id="rec-rec-opts" style="display:none;margin-top:.65rem;padding:.7rem .9rem;background:var(--success-l);border:1px solid #a7f3d0;border-radius:var(--r-sm)">
-          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
             <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Repetir por:</label>
-            <select id="rec-nmes" onchange="recUpdatePreview()" style="font-size:.82rem;flex:1">
+            <select id="rec-nmes" onchange="onNmesChange('rec')" style="font-size:.82rem;flex:1">
               <option value="ano">Restante do ano (até Dez)</option>
               <option value="3">3 meses</option>
               <option value="6">6 meses</option>
               <option value="12" selected>12 meses</option>
               <option value="24">24 meses</option>
+              <option value="custom">Personalizado...</option>
             </select>
+            <input type="number" id="rec-nmes-custom" min="1" max="120" placeholder="Qtd" oninput="recUpdatePreview()" style="display:none;width:70px;font-size:.82rem;padding:.25rem .4rem;border:1px solid var(--border2);border-radius:var(--r-sm)">
           </div>
           <div id="rec-preview" style="font-size:.77rem;color:var(--success-d);font-weight:600"></div>
         </div>
@@ -799,15 +810,17 @@ body.auth-locked .auth-screen{display:flex}
           <span class="tgl"><input type="checkbox" id="df-rec" onchange="despRecToggle('df')"><span class="tgl-track"></span></span>
         </label>
         <div id="df-rec-opts" style="display:none;margin-top:.65rem;padding:.7rem .9rem;background:var(--danger-l);border:1px solid #fca5a5;border-radius:var(--r-sm)">
-          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.45rem">
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.45rem">
             <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Número de parcelas:</label>
-            <select id="df-nmes" onchange="despRecUpdatePreview('df')" style="font-size:.82rem;flex:1">
+            <select id="df-nmes" onchange="onNmesChange('df')" style="font-size:.82rem;flex:1">
               <option value="ano">Restante do ano (até Dez)</option>
               <option value="3">3 meses</option>
               <option value="6">6 meses</option>
               <option value="12" selected>12 meses</option>
               <option value="24">24 meses</option>
+              <option value="custom">Personalizado...</option>
             </select>
+            <input type="number" id="df-nmes-custom" min="1" max="120" placeholder="Qtd" oninput="despRecUpdatePreview('df')" style="display:none;width:70px;font-size:.82rem;padding:.25rem .4rem;border:1px solid var(--border2);border-radius:var(--r-sm)">
           </div>
           <div id="df-rec-preview" style="font-size:.77rem;color:var(--danger-d);font-weight:600"></div>
         </div>
@@ -840,15 +853,17 @@ body.auth-locked .auth-screen{display:flex}
           <span class="tgl"><input type="checkbox" id="dv-rec" onchange="despRecToggle('dv')"><span class="tgl-track"></span></span>
         </label>
         <div id="dv-rec-opts" style="display:none;margin-top:.65rem;padding:.7rem .9rem;background:var(--warning-l);border:1px solid #fde68a;border-radius:var(--r-sm)">
-          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.45rem">
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.45rem">
             <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Número de parcelas:</label>
-            <select id="dv-nmes" onchange="despRecUpdatePreview('dv')" style="font-size:.82rem;flex:1">
+            <select id="dv-nmes" onchange="onNmesChange('dv')" style="font-size:.82rem;flex:1">
               <option value="ano">Restante do ano (até Dez)</option>
               <option value="3">3 meses</option>
               <option value="6">6 meses</option>
               <option value="12" selected>12 meses</option>
               <option value="24">24 meses</option>
+              <option value="custom">Personalizado...</option>
             </select>
+            <input type="number" id="dv-nmes-custom" min="1" max="120" placeholder="Qtd" oninput="despRecUpdatePreview('dv')" style="display:none;width:70px;font-size:.82rem;padding:.25rem .4rem;border:1px solid var(--border2);border-radius:var(--r-sm)">
           </div>
           <div id="dv-rec-preview" style="font-size:.77rem;color:var(--warning-d);font-weight:600"></div>
         </div>
@@ -964,6 +979,35 @@ body.auth-locked .auth-screen{display:flex}
   </div>
 </div>
 
+<!-- Modal: Importar Tarefas -->
+<div class="moverlay" id="mod-import-tarefas">
+  <div class="modal xl"><div class="mh"><div class="mh-title">📋 Importar Tarefas da Planilha</div><button class="mclose" onclick="closeM('mod-import-tarefas')">✕</button></div>
+  <div class="mb">
+    <div style="margin-bottom:.85rem">
+      <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:.3rem">
+        Cole as linhas copiadas do Excel <span style="color:var(--text3)">(formato: Tipo · Quem · Tarefa · Status · Observação)</span>
+      </label>
+      <textarea id="tar-paste" rows="4" placeholder="Selecione as linhas no Excel e cole aqui (Ctrl+V)…" oninput="tarefasParsePaste(this.value)" style="width:100%;font-size:.78rem;font-family:monospace;resize:vertical;border:1.5px dashed var(--border2);border-radius:.4rem;padding:.5rem;box-sizing:border-box"></textarea>
+    </div>
+    <div class="tw" style="box-shadow:none;max-height:340px;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:var(--surface2);font-size:.78rem;text-transform:uppercase;letter-spacing:.03em">
+          <th style="padding:.4rem .6rem;text-align:left;width:100px">Tipo</th>
+          <th style="padding:.4rem .6rem;text-align:left;width:110px">Quem</th>
+          <th style="padding:.4rem .6rem;text-align:left">Tarefa</th>
+          <th style="padding:.4rem .6rem;text-align:center;width:120px">Status</th>
+          <th style="padding:.4rem .6rem;text-align:left;width:160px">Observação</th>
+          <th style="width:28px"></th>
+        </tr></thead>
+        <tbody id="tar-tbody"></tbody>
+      </table>
+    </div>
+    <button class="btn btn-outline btn-sm" style="margin-top:.55rem" onclick="tarefaAddRow()">➕ Adicionar linha</button>
+  </div>
+  <div class="mf"><button class="btn btn-outline" onclick="closeM('mod-import-tarefas')">Cancelar</button><button class="btn btn-primary" onclick="confirmImportTarefas()">Importar</button></div>
+  </div>
+</div>
+
 <!-- Modal: Limpar Compras do Cartão -->
 <div class="moverlay" id="mod-clr-card">
   <div class="modal sm"><div class="mh"><div class="mh-title">♻️ Limpar Compras do Cartão</div><button class="mclose" onclick="closeM('mod-clr-card')">✕</button></div>
@@ -986,10 +1030,11 @@ body.auth-locked .auth-screen{display:flex}
   <div class="mb"><input type="hidden" id="t-id">
     <div class="form-grid">
       <div class="fg s2"><label>Tarefa *</label><input type="text" id="t-desc" placeholder="Descreva a tarefa..."></div>
-      <div class="fg"><label>Responsável</label><select id="t-resp"><option value="p1">Pessoa 1</option><option value="p2">Pessoa 2</option><option value="ambos">Ambos</option></select></div>
+      <div class="fg"><label>Tipo / Categoria</label><input type="text" id="t-tipo" placeholder="Ex: Pessoal, Trabalho..."></div>
+      <div class="fg"><label>Responsável</label><select id="t-resp"></select></div>
       <div class="fg"><label>Prioridade</label><select id="t-prior"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></div>
       <div class="fg"><label>Data Limite</label><input type="date" id="t-data"></div>
-      <div class="fg"><label>Status</label><select id="t-status"><option value="pendente">Pendente</option><option value="andamento">Em Andamento</option><option value="concluida">Concluída</option></select></div>
+      <div class="fg"><label>Status</label><select id="t-status"><option value="pendente">A Fazer</option><option value="andamento">Em Andamento</option><option value="concluida">Ok / Concluída</option></select></div>
       <div class="fg s2"><label>Observações</label><textarea id="t-obs"></textarea></div>
     </div>
   </div>
@@ -1002,6 +1047,15 @@ body.auth-locked .auth-screen{display:flex}
   <div class="modal"><div class="mh"><div class="mh-title" id="des-mtitle">Novo Desejo</div><button class="mclose" onclick="closeM('mod-desejo')">✕</button></div>
   <div class="mb"><input type="hidden" id="des-id">
     <div class="form-grid">
+      <div class="fg s2">
+        <label>Foto do Item <span style="color:var(--text3);font-weight:400">(Lei da Atração)</span></label>
+        <div id="des-foto-area" class="wish-foto-area" onclick="document.getElementById('des-foto-inp').click()" title="Clique para adicionar foto">
+          <div id="des-foto-ph" style="color:var(--text3);font-size:.85rem;pointer-events:none">📷 Clique para adicionar uma foto do item desejado</div>
+          <img id="des-foto-prev" style="display:none" alt="Foto do desejo">
+        </div>
+        <input type="file" id="des-foto-inp" accept="image/*" style="display:none" onchange="desFotoUpload(event)">
+        <button type="button" id="des-foto-rm" onclick="desFotoRemove(event)" style="display:none;font-size:.78rem;color:var(--danger);background:none;border:none;cursor:pointer;margin-top:.35rem;padding:0">✕ Remover foto</button>
+      </div>
       <div class="fg s2"><label>Nome do Item *</label><input type="text" id="des-nome" placeholder="Ex: iPhone, Notebook, Viagem..."></div>
       <div class="fg"><label>Valor Estimado (R$)</label><input type="text" id="des-valor" placeholder="0,00" oninput="mask(this)"></div>
       <div class="fg"><label>Pessoa</label><select id="des-pessoa"><option value="p1">Pessoa 1</option><option value="p2">Pessoa 2</option><option value="ambos">Ambos</option></select></div>
@@ -1158,12 +1212,9 @@ function unlockApp(shouldRender=true){
 }
 function requireAuth(){
   AUTH=loadAuth();
-  setupAuthUI();
-  if(!hasAuth()){showSetup(false);return false}
-  const sessionUser=readAuthSession();
-  if(sessionUser){currentUser=sessionUser;unlockApp(false);return true}
-  showLogin();
-  return false
+  currentUser=readAuthSession()||AUTH.users?.[0]||null;
+  unlockApp(false);
+  return true;
 }
 async function handleLogin(ev){
   ev.preventDefault();
@@ -1498,7 +1549,9 @@ function renderDash(){
   // ── Por Pessoa ──
   const pRow=(p)=>{
     const rec=APP.receitas.filter(r=>inPeriod(r)&&r.pessoa===p).reduce((s,r)=>s+parseBRL(r.valor),0);
-    const dep=[...APP.despesasFixas,...APP.despesasVariaveis].filter(d=>inPeriod(d)&&d.pessoa===p).reduce((s,d)=>s+parseBRL(d.valor),0);
+    const depFV=[...APP.despesasFixas,...APP.despesasVariaveis].filter(d=>inPeriod(d)&&d.pessoa===p).reduce((s,d)=>s+parseBRL(d.valor),0);
+    const depCC=APP.parcelas.filter(parc=>inPeriod(parc)&&parc.pessoa===p).reduce((s,parc)=>s+parseBRL(parc.valorParcela),0);
+    const dep=depFV+depCC;
     const saldoP=rec-dep;
     return`<div class="dash-stat-row"><div>${bdgPessoa(p)}</div><div style="text-align:right;font-size:.77rem;line-height:1.7">
       <div>Rec: <strong class="text-green">${brl(rec)}</strong></div>
@@ -1710,9 +1763,8 @@ function recToggle(){
 }
 function recGetMeses(){
   const mes=+V('rec-mes'),ano=+V('rec-ano');
-  const nVal=V('rec-nmes');
-  let n;
-  if(nVal==='ano'){n=Math.max(1,13-mes);}else{n=+nVal||12;}
+  const nVal=nmesValue('rec');
+  const n=nVal==='ano'?Math.max(1,13-mes):+nVal||12;
   return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
 }
 function recUpdatePreview(){
@@ -2606,7 +2658,7 @@ function renderTarefas(){
     return`<div class="task-item ${t.status==='concluida'?'done':''} ${ov?'overdue':''}">
       <input type="checkbox" ${t.status==='concluida'?'checked':''} onchange="tglTarefa('${t.id}',this.checked)" style="margin-top:3px">
       <div style="flex:1"><div class="task-text">${t.descricao}</div>
-        <div class="task-meta">${bdgPessoa(t.responsavel)} ${bdgPrior(t.prioridade)} ${t.dataLimite?`<span class="${ov?'text-red':''}">${ov?'⚠ Atrasada: ':''}${fmtDate(t.dataLimite)}</span>`:''}</div>
+        <div class="task-meta">${t.tipo?`<span class="badge" style="background:#e0e7ff;color:#3730a3;border:none">${escHtml(t.tipo)}</span> `:''}${bdgPessoa(t.responsavel)} ${bdgPrior(t.prioridade)} ${t.dataLimite?`<span class="${ov?'text-red':''}">${ov?'⚠ Atrasada: ':''}${fmtDate(t.dataLimite)}</span>`:''}</div>
         ${t.obs?`<div style="font-size:.75rem;color:var(--text3);margin-top:.15rem">${t.obs}</div>`:''}
       </div>
       <div class="flex gap"><button class="btn btn-ghost btn-sm btn-icon" onclick="editTarefa('${t.id}')">✏️</button><button class="btn btn-ghost btn-sm btn-icon" onclick="delConfirm('tarefas','${t.id}','${t.descricao}')">🗑️</button></div>
@@ -2618,6 +2670,8 @@ function openMTarefa(item){
   document.getElementById('t-mtitle').textContent=item?'Editar Tarefa':'Nova Tarefa';
   document.getElementById('t-id').value=item?.id||'';
   document.getElementById('t-desc').value=item?.descricao||'';
+  document.getElementById('t-tipo').value=item?.tipo||'';
+  document.getElementById('t-resp').innerHTML=`<option value="p1">${escHtml(APP.config.p1)}</option><option value="p2">${escHtml(APP.config.p2)}</option><option value="ambos">Ambos</option>`;
   document.getElementById('t-resp').value=item?.responsavel||'p1';
   document.getElementById('t-prior').value=item?.prioridade||'media';
   document.getElementById('t-data').value=item?.dataLimite||'';
@@ -2630,8 +2684,88 @@ function saveTarefa(){
   const desc=V('t-desc').trim();
   if(!desc){toast('Preencha a tarefa','error');return}
   const id=V('t-id');
-  const d={id:id||gid(),descricao:desc,responsavel:V('t-resp'),prioridade:V('t-prior'),dataLimite:V('t-data'),status:V('t-status'),obs:V('t-obs')};
+  const d={id:id||gid(),descricao:desc,tipo:V('t-tipo').trim(),responsavel:V('t-resp'),prioridade:V('t-prior'),dataLimite:V('t-data'),status:V('t-status'),obs:V('t-obs')};
   upsert('tarefas',d,id);save();closeM('mod-tarefa');toast('Tarefa salva!','success');renderTarefas();
+}
+
+// ═══ IMPORTAR TAREFAS ═══
+let TAR_ROW_ID=0;
+function openMImportTarefas(){
+  document.getElementById('tar-paste').value='';
+  document.getElementById('tar-tbody').innerHTML='';
+  TAR_ROW_ID=0;
+  tarefaAddRow();
+  openM('mod-import-tarefas');
+}
+function mapTarefaResp(quem){
+  const q=(quem||'').trim().toLowerCase();
+  if(!q||q==='ambos'||q==='both'||q==='todas'||q==='todos')return'ambos';
+  if(q===APP.config.p1.toLowerCase())return'p1';
+  if(q===APP.config.p2.toLowerCase())return'p2';
+  if(q==='p1')return'p1';
+  if(q==='p2')return'p2';
+  return'ambos';
+}
+function mapTarefaStatus(st){
+  const s=(st||'').trim().toLowerCase();
+  if(/ok|feito|conclu|done|pronto/.test(s))return'concluida';
+  if(/andamento|progress|fazendo/.test(s))return'andamento';
+  return'pendente';
+}
+function tarefaRespOpts(sel){
+  return`<option value="p1" ${sel==='p1'?'selected':''}>${escHtml(APP.config.p1)}</option><option value="p2" ${sel==='p2'?'selected':''}>${escHtml(APP.config.p2)}</option><option value="ambos" ${sel==='ambos'?'selected':''}>Ambos</option>`;
+}
+function tarefaStatusOpts(sel){
+  return`<option value="pendente" ${sel==='pendente'?'selected':''}>A Fazer</option><option value="andamento" ${sel==='andamento'?'selected':''}>Em Andamento</option><option value="concluida" ${sel==='concluida'?'selected':''}>Ok / Concluída</option>`;
+}
+function tarefaAddRow(tipo='',resp='ambos',desc='',status='pendente',obs=''){
+  const i=++TAR_ROW_ID;
+  const tr=document.createElement('tr');
+  tr.id=`tar-r-${i}`;
+  tr.style.borderBottom='1px solid var(--border)';
+  tr.innerHTML=`
+    <td style="padding:.3rem .4rem"><input type="text" value="${escHtml(tipo)}" placeholder="Pessoal..." style="width:100%;font-size:.82rem;padding:.2rem"></td>
+    <td style="padding:.3rem .4rem"><select style="width:100%;font-size:.82rem;padding:.2rem">${tarefaRespOpts(resp)}</select></td>
+    <td style="padding:.3rem .4rem"><input type="text" value="${escHtml(desc)}" placeholder="Descrição da tarefa" style="width:100%;font-size:.82rem;padding:.2rem"></td>
+    <td style="padding:.3rem .4rem"><select style="width:100%;font-size:.82rem;padding:.2rem">${tarefaStatusOpts(status)}</select></td>
+    <td style="padding:.3rem .4rem"><input type="text" value="${escHtml(obs)}" placeholder="Opcional..." style="width:100%;font-size:.82rem;padding:.2rem"></td>
+    <td style="padding:.3rem .2rem;text-align:center"><button onclick="document.getElementById('tar-r-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:1rem" title="Remover">✕</button></td>`;
+  document.getElementById('tar-tbody').appendChild(tr);
+}
+function tarefasParsePaste(text){
+  const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return;
+  document.getElementById('tar-tbody').innerHTML='';
+  TAR_ROW_ID=0;
+  lines.forEach(line=>{
+    const c=line.split('\t');
+    const tipo=(c[0]||'').trim();
+    const quem=(c[1]||'').trim();
+    const desc=(c[2]||'').trim();
+    const st=(c[3]||'').trim();
+    const obs=(c[4]||'').trim();
+    if(desc||quem)tarefaAddRow(tipo,mapTarefaResp(quem),desc,mapTarefaStatus(st),obs);
+  });
+  if(!document.querySelectorAll('#tar-tbody tr').length)tarefaAddRow();
+}
+function confirmImportTarefas(){
+  const rows=document.querySelectorAll('#tar-tbody tr');
+  if(!rows.length){toast('Adicione ao menos uma linha.','warning');return}
+  let imported=0,erros=0;
+  rows.forEach(tr=>{
+    const inputs=tr.querySelectorAll('input');
+    const sels=tr.querySelectorAll('select');
+    const tipo=(inputs[0]?.value||'').trim();
+    const resp=sels[0]?.value||'ambos';
+    const desc=(inputs[1]?.value||'').trim();
+    const status=sels[1]?.value||'pendente';
+    const obs=(inputs[2]?.value||'').trim();
+    if(!desc){erros++;return}
+    APP.tarefas.push({id:gid(),descricao:desc,tipo,responsavel:resp,prioridade:'media',dataLimite:'',status,obs});
+    imported++;
+  });
+  save();closeM('mod-import-tarefas');renderTarefas();
+  toast(`✅ ${imported} tarefa(s) importada(s)${erros?`. ${erros} linha(s) ignoradas`:'.'}`,'success',4000);
 }
 
 // ═══ DESEJOS ═══
@@ -2645,8 +2779,9 @@ function renderDesejos(){
   document.getElementById('des-sum').innerHTML=[sc('⭐','Total Estimado',tot,'blue'),sc('✅','Já Comprado',comprado,'green'),sc('🛒','Restante',tot-comprado,'yellow')].join('');
   const el=document.getElementById('dlist');
   el.innerHTML=items.length?items.map(d=>`<div class="wish-card ${d.status==='comprado'?'bought':''}">
+    ${d.foto?`<img src="${d.foto}" class="wish-card-img" alt="${escHtml(d.nome)}" loading="lazy" onclick="desFotoZoom('${d.id}')">`:''}
     <div class="flex flex-between flex-center mb1">${bdgPrior(d.prioridade)}<div class="flex gap">${d.link?`<a href="${d.link}" target="_blank" class="btn btn-ghost btn-sm btn-icon" title="Ver produto">🔗</a>`:''}<button class="btn btn-ghost btn-sm btn-icon" onclick="editDesejo('${d.id}')">✏️</button><button class="btn btn-ghost btn-sm btn-icon" onclick="delConfirm('desejos','${d.id}','${d.nome}')">🗑️</button></div></div>
-    <div class="wish-name">${d.nome}</div>
+    <div class="wish-name">${escHtml(d.nome)}</div>
     <div class="wish-price">${d.valorEstimado?brl(parseBRL(d.valorEstimado)):'—'}</div>
     <div class="wish-meta">${bdgPessoa(d.pessoa)} ${bdgStatus(d.status)}</div>
     ${d.categoria?`<div style="font-size:.7rem;color:var(--text3);margin-top:.25rem">${d.categoria}</div>`:''}
@@ -2667,6 +2802,7 @@ function openMDesejo(item){
   document.getElementById('des-link').value=item?.link||'';
   document.getElementById('des-obs').value=item?.obs||'';
   fillCat('des-cat');if(item?.categoria)document.getElementById('des-cat').value=item.categoria;
+  desFotoSet(item?.foto||'');
   openM('mod-desejo');
 }
 function editDesejo(id){openMDesejo(APP.desejos.find(d=>d.id===id))}
@@ -2674,8 +2810,59 @@ function saveDesejo(){
   const nome=V('des-nome').trim();
   if(!nome){toast('Preencha o nome','error');return}
   const id=V('des-id');
-  const d={id:id||gid(),nome,valorEstimado:V('des-valor'),pessoa:V('des-pessoa'),categoria:V('des-cat'),prioridade:V('des-prior'),dataDesejada:V('des-data'),status:V('des-status'),link:V('des-link'),obs:V('des-obs')};
+  const d={id:id||gid(),nome,valorEstimado:V('des-valor'),pessoa:V('des-pessoa'),categoria:V('des-cat'),prioridade:V('des-prior'),dataDesejada:V('des-data'),status:V('des-status'),link:V('des-link'),obs:V('des-obs'),foto:desFotoGet()};
   upsert('desejos',d,id);save();closeM('mod-desejo');toast('Desejo salvo!','success');renderDesejos();
+}
+
+// ═══ DESEJOS — FOTO ═══
+function desFotoUpload(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      const canvas=document.createElement('canvas');
+      const MAX=700;let w=img.width,h=img.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX}
+      if(h>MAX){w=Math.round(w*MAX/h);h=MAX}
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      desFotoSet(canvas.toDataURL('image/jpeg',0.78));
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value='';
+}
+function desFotoSet(src){
+  const area=document.getElementById('des-foto-area');
+  const ph=document.getElementById('des-foto-ph');
+  const prev=document.getElementById('des-foto-prev');
+  const rm=document.getElementById('des-foto-rm');
+  if(src){
+    prev.src=src;prev.style.display='block';
+    ph.style.display='none';rm.style.display='inline';
+    area.classList.add('has-img');
+  }else{
+    prev.src='';prev.style.display='none';
+    ph.style.display='block';rm.style.display='none';
+    area.classList.remove('has-img');
+  }
+}
+function desFotoRemove(e){if(e)e.stopPropagation();desFotoSet('');}
+function desFotoGet(){
+  const prev=document.getElementById('des-foto-prev');
+  return prev&&prev.style.display!=='none'?prev.src:'';
+}
+function desFotoZoom(id){
+  const d=APP.desejos.find(x=>x.id===id);if(!d?.foto)return;
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:1rem';
+  ov.onclick=()=>ov.remove();
+  const img=document.createElement('img');
+  img.src=d.foto;
+  img.style.cssText='max-width:90vw;max-height:90vh;object-fit:contain;border-radius:var(--r);box-shadow:0 8px 40px rgba(0,0,0,.5)';
+  ov.appendChild(img);document.body.appendChild(ov);
 }
 
 // ═══ CONFIGURAÇÕES ═══
@@ -2784,9 +2971,25 @@ function despRecToggle(p){
   document.getElementById(`${p}-rec-opts`).style.display=ck.checked&&isNew?'block':'none';
   if(ck.checked&&isNew)despRecUpdatePreview(p);
 }
+function onNmesChange(p){
+  const sel=document.getElementById(`${p}-nmes`);
+  const customEl=document.getElementById(`${p}-nmes-custom`);
+  if(customEl){
+    const isCustom=sel.value==='custom';
+    customEl.style.display=isCustom?'inline-block':'none';
+    if(isCustom&&!customEl.value)customEl.value='6';
+  }
+  if(p==='rec')recUpdatePreview();
+  else despRecUpdatePreview(p);
+}
+function nmesValue(p){
+  const nVal=V(`${p}-nmes`);
+  if(nVal==='custom')return Math.max(1,Math.min(120,+V(`${p}-nmes-custom`)||1));
+  return nVal;
+}
 function despRecGetMeses(p){
   const mes=+V(`${p}-mes`),ano=+V(`${p}-ano`);
-  const nVal=V(`${p}-nmes`);
+  const nVal=nmesValue(p);
   const n=nVal==='ano'?Math.max(1,13-mes):+nVal||12;
   return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
 }
