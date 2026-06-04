@@ -6,6 +6,7 @@
 <title>💰 Finanças da Família</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg:#F4F7FB; --surface:#FFFFFF; --surface2:#EEF2F7; --border:#E2E8F0; --border2:#CBD5E0;
@@ -239,6 +240,17 @@ hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
 /* ── PROGRESS RING ── */
 .pct-ring{font-family:var(--serif);font-size:2rem;font-weight:600}
 
+/* ── DASHBOARD ── */
+.dash-chart-wrap{position:relative;height:210px}
+.dash-prog-bar{height:7px;background:var(--surface2);border-radius:999px;overflow:hidden;margin-top:.25rem}
+.dash-prog-fill{height:100%;border-radius:999px;transition:width .5s ease}
+.dash-stat-row{display:flex;justify-content:space-between;align-items:center;padding:.42rem 0;border-bottom:1px solid var(--border);font-size:.8rem}
+.dash-stat-row:last-child{border-bottom:none}
+.dash-kpi-label{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:.5rem}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+@media(max-width:900px){.three-col{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.three-col{grid-template-columns:1fr}}
+
 /* ── UTILS ── */
 .tr{text-align:right}.tc{text-align:center}.fw6{font-weight:600}.fw7{font-weight:700}
 .text-green{color:var(--success-d)}.text-red{color:var(--danger)}.text-yellow{color:var(--warning-d)}.text-blue{color:var(--primary-d)}.text-muted{color:var(--text3)}
@@ -412,27 +424,55 @@ body.auth-locked .auth-screen{display:flex}
   <div class="sh">
     <div class="sh-title">📊 Dashboard — <span id="dashLabel"></span></div>
     <div class="sh-actions">
-      <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ Exportar</button>
-      <button class="btn btn-primary btn-sm" onclick="go('tabela')">Ver Tabela →</button>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <div style="display:flex;background:var(--surface2);border-radius:var(--r-sm);padding:2px;gap:2px">
+          <button id="dash-btn-mensal" class="btn btn-primary btn-sm" style="border-radius:6px" onclick="setDashView('mensal')">Mensal</button>
+          <button id="dash-btn-anual" class="btn btn-outline btn-sm" style="border-radius:6px;background:transparent;border:none" onclick="setDashView('anual')">Anual</button>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ Exportar</button>
+        <button class="btn btn-primary btn-sm" onclick="go('tabela')">Ver Tabela →</button>
+      </div>
     </div>
   </div>
+
+  <!-- Saúde Financeira -->
   <div class="health-card" id="hcard">
     <div class="flex flex-between flex-center">
-      <div><div style="font-size:.7rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Saúde Financeira do Mês</div>
-        <div style="font-family:var(--serif);font-size:1.15rem;margin-top:.15rem" id="hlabel">—</div></div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Saúde Financeira</div>
+        <div style="font-family:var(--serif);font-size:1.15rem;margin-top:.15rem" id="hlabel">—</div>
+      </div>
       <div class="pct-ring" id="hpct">—</div>
     </div>
     <div class="health-bar"><div class="health-fill" id="hfill" style="width:0%;background:var(--success)"></div></div>
   </div>
-  <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:.5rem">💰 Receitas</div>
-  <div class="scards" id="d-receitas"></div>
-  <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:.9rem 0 .5rem">📉 Despesas</div>
-  <div class="scards" id="d-despesas"></div>
-  <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:.9rem 0 .5rem">⚖️ Saldo</div>
-  <div class="scards" id="d-saldo"></div>
+
+  <!-- KPI Cards -->
+  <div class="dash-kpi-label">Resumo do período</div>
+  <div class="scards" id="d-kpis"></div>
+
+  <!-- Gráficos -->
   <div class="two-col mt2">
-    <div class="card"><div class="card-title mb1">👥 Por Pessoa</div><div id="d-pessoa"></div></div>
-    <div class="card"><div class="card-title mb1">🏷️ Por Categoria</div><div id="d-cat"></div></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">📊 Receitas vs Despesas</div></div>
+      <div class="dash-chart-wrap"><canvas id="chart-bar"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">🏷️ Gastos por Categoria</div></div>
+      <div class="dash-chart-wrap"><canvas id="chart-donut"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Status + Pessoas -->
+  <div class="two-col mt2">
+    <div class="card">
+      <div class="card-title mb1">📋 Status de Pagamentos</div>
+      <div id="d-status"></div>
+    </div>
+    <div class="card">
+      <div class="card-title mb1">👥 Por Pessoa</div>
+      <div id="d-pessoa"></div>
+    </div>
   </div>
 </div>
 
@@ -535,6 +575,7 @@ body.auth-locked .auth-screen{display:flex}
   <div class="sh">
     <div class="sh-title">💳 Cartões de Crédito</div>
     <div class="sh-actions">
+      <button class="btn btn-outline" onclick="openMImportPlanilha()" style="font-size:.85rem">📋 Importar Planilha</button>
       <button class="btn btn-outline" onclick="openMImportCartao()" style="font-size:.85rem">⬆ Importar Extrato</button>
       <button class="btn btn-outline" onclick="openMCartao(null)" style="font-size:.85rem">➕ Novo Cartão</button>
       <button class="btn btn-primary" onclick="openMCompra(null)" style="font-size:.9rem;padding:.55rem 1.2rem">➕ Nova Compra no Cartão</button>
@@ -835,6 +876,39 @@ body.auth-locked .auth-screen{display:flex}
     </div>
   </div>
   <div class="mf"><button class="btn btn-outline" onclick="closeM('mod-import-cartao')">Cancelar</button><button class="btn btn-primary" id="imp-confirm" onclick="confirmCardStatementImport()" disabled>Importar selecionadas</button></div>
+  </div>
+</div>
+
+<!-- Modal: Importar por Planilha -->
+<div class="moverlay" id="mod-import-planilha">
+  <div class="modal xl"><div class="mh"><div class="mh-title">📋 Importar por Planilha</div><button class="mclose" onclick="closeM('mod-import-planilha')">✕</button></div>
+  <div class="mb">
+    <div class="form-grid g4" style="margin-bottom:1rem">
+      <div class="fg"><label>Mês da fatura</label><select id="pil-mes"></select></div>
+      <div class="fg"><label>Ano da fatura</label><select id="pil-ano"></select></div>
+      <div class="fg"><label>Pessoa padrão</label><select id="pil-pessoa"></select></div>
+      <div class="fg"><label>Status padrão</label><select id="pil-status"><option value="pendente">Pendente</option><option value="pago">Pago</option></select></div>
+    </div>
+    <div style="margin-bottom:.85rem">
+      <label style="font-size:.82rem;color:var(--text2);display:block;margin-bottom:.3rem">Cole aqui as linhas copiadas do Excel <span style="color:var(--text3)">(formato: Cartão · Descrição · Categoria · Parcelas · Valor)</span></label>
+      <textarea id="pil-paste" rows="3" placeholder="Selecione as linhas no Excel e cole aqui (Ctrl+V)…" oninput="pilParsePaste(this.value)" style="width:100%;font-size:.78rem;font-family:monospace;resize:vertical;border:1.5px dashed var(--border2);border-radius:.4rem;padding:.5rem;box-sizing:border-box"></textarea>
+    </div>
+    <div class="tw" style="box-shadow:none;max-height:320px;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse" id="pil-table">
+        <thead><tr style="background:var(--surface2);font-size:.78rem;text-transform:uppercase;letter-spacing:.03em">
+          <th style="padding:.4rem .6rem;text-align:left;min-width:115px">Cartão</th>
+          <th style="padding:.4rem .6rem;text-align:left">Descrição</th>
+          <th style="padding:.4rem .6rem;text-align:left;min-width:120px">Categoria</th>
+          <th style="padding:.4rem .6rem;text-align:center;width:90px">Parcelas <span style="font-weight:400;text-transform:none">(3|6)</span></th>
+          <th style="padding:.4rem .6rem;text-align:right;width:105px">Valor (R$)</th>
+          <th style="width:28px"></th>
+        </tr></thead>
+        <tbody id="pil-tbody"></tbody>
+      </table>
+    </div>
+    <button class="btn btn-outline btn-sm" style="margin-top:.55rem" onclick="pilAddRow()">➕ Adicionar linha</button>
+  </div>
+  <div class="mf"><button class="btn btn-outline" onclick="closeM('mod-import-planilha')">Cancelar</button><button class="btn btn-primary" onclick="pilImportar()">Importar</button></div>
   </div>
 </div>
 
@@ -1172,50 +1246,154 @@ function calcMes(m,a){
 }
 
 function sc(icon,label,value,cls='',sub=''){return`<div class="sc"><div class="sc-icon">${icon}</div><div class="sc-label">${label}</div><div class="sc-value ${cls}">${brl(value)}</div>${sub?`<div class="sc-sub">${sub}</div>`:''}</div>`}
+function scStr(icon,label,valStr,cls=''){return`<div class="sc"><div class="sc-icon">${icon}</div><div class="sc-label">${label}</div><div class="sc-value ${cls}">${valStr}</div></div>`}
 
 // ═══ DASHBOARD ═══
+let DASH_VIEW='mensal';
+let DASH_CHARTS={};
+function setDashView(v){
+  DASH_VIEW=v;
+  ['mensal','anual'].forEach(k=>{
+    const b=document.getElementById(`dash-btn-${k}`);
+    if(b){b.className=k===v?'btn btn-primary btn-sm':'btn btn-outline btn-sm';b.style.cssText=k===v?'border-radius:6px':'border-radius:6px;background:transparent;border:none';}
+  });
+  renderDash();
+}
+function destroyDashCharts(){
+  Object.values(DASH_CHARTS).forEach(c=>{try{c.destroy()}catch(e){}});
+  DASH_CHARTS={};
+}
+function mkChart(id,cfg){
+  if(typeof Chart==='undefined')return;
+  const el=document.getElementById(id);if(!el)return;
+  DASH_CHARTS[id]=new Chart(el,cfg);
+}
 function renderDash(){
-  const t=calcMes(cM,cA);
-  document.getElementById('dashLabel').textContent=`${MONTHS[cM-1]} ${cA}`;
+  destroyDashCharts();
+  const isAnual=DASH_VIEW==='anual';
+
+  // Período label
+  document.getElementById('dashLabel').textContent=isAnual?String(cA):`${MONTHS[cM-1]} ${cA}`;
+
+  // Meses para o gráfico de tendência
+  const trendMeses=isAnual?
+    MONTHS.map((_,i)=>({m:i+1,a:cA})):
+    Array.from({length:6},(_,i)=>addMonthsYM(cM,cA,-(5-i)));
+  const trendLabels=trendMeses.map(({m,a})=>isAnual?MONTHS[m-1].slice(0,3):`${MONTHS[m-1].slice(0,3)}/${String(a).slice(2)}`);
+  const trendData=trendMeses.map(({m,a})=>calcMes(m,a));
+
+  // Totais do período selecionado
+  const t=isAnual?
+    trendData.reduce((acc,d)=>({tRec:acc.tRec+d.tRec,tDesp:acc.tDesp+d.tDesp,tDF:acc.tDF+d.tDF,tDV:acc.tDV+d.tDV,tParc:acc.tParc+d.tParc,tPago:acc.tPago+d.tPago,tPend:acc.tPend+d.tPend,tAtras:acc.tAtras+d.tAtras,tInv:acc.tInv+d.tInv,saldo:acc.saldo+d.saldo}),
+      {tRec:0,tDesp:0,tDF:0,tDV:0,tParc:0,tPago:0,tPend:0,tAtras:0,tInv:0,saldo:0}):
+    calcMes(cM,cA);
+  t.saldoR=t.tRec-t.tPago;
+
+  // ── Saúde ──
   const ratio=t.tDesp>0?Math.min(t.tRec/t.tDesp,1):1;
   const pct=Math.round(ratio*100);
-  const color=pct>=90?'var(--success)':pct>=70?'var(--warning)':'var(--danger)';
-  const label=pct>=90?'😊 Saúde ótima':pct>=70?'😐 Atenção necessária':'😟 Situação crítica';
+  const hColor=pct>=90?'var(--success)':pct>=70?'var(--warning)':'var(--danger)';
   document.getElementById('hpct').textContent=pct+'%';
-  document.getElementById('hpct').style.color=color;
-  document.getElementById('hlabel').textContent=label;
-  document.getElementById('hfill').style.cssText=`width:${pct}%;background:${color}`;
+  document.getElementById('hpct').style.color=hColor;
+  document.getElementById('hlabel').textContent=pct>=90?'😊 Saúde ótima':pct>=70?'😐 Atenção necessária':'😟 Situação crítica';
+  document.getElementById('hfill').style.cssText=`width:${pct}%;background:${hColor}`;
 
-  const inM=x=>+x.mes===cM&&+x.ano===cA;
-  const tSal=APP.receitas.filter(r=>inM(r)&&r.tipo==='salario').reduce((s,r)=>s+parseBRL(r.valor),0);
-  const tExtra=APP.receitas.filter(r=>inM(r)&&r.tipo!=='salario').reduce((s,r)=>s+parseBRL(r.valor),0);
-
-  document.getElementById('d-receitas').innerHTML=[
-    sc('💼','Salários',tSal,'green'),sc('💰','Receitas Extras',tExtra,'blue'),
-    sc('📥','Total de Receitas',t.tRec,'green'),sc('📈','Investimentos Aportados',t.tInv,'purple')
+  // ── KPI Cards ──
+  const economia=t.tRec>0?Math.round((Math.max(0,t.saldo)/t.tRec)*100):0;
+  document.getElementById('d-kpis').innerHTML=[
+    sc('💰','Total Receitas',t.tRec,'green'),
+    sc('💸','Total Despesas',t.tDesp,'red'),
+    sc('⚖️','Saldo',t.saldo,t.saldo>=0?'green':'red'),
+    scStr('💾','Taxa de Poupança',`${economia}%`,'blue'),
+    sc('✅','Total Pago',t.tPago,'green'),
+    sc('⏳','A Pagar',t.tPend,'yellow'),
+    sc('📈','Investido',t.tInv,'purple'),
+    sc('⚠️','Em Atraso',t.tAtras,t.tAtras>0?'red':''),
   ].join('');
 
-  document.getElementById('d-despesas').innerHTML=[
-    sc('🏠','Despesas Fixas',t.tDF),sc('🛒','Despesas Variáveis',t.tDV),
-    sc('💳','Parcelas de Cartão',t.tParc),
-    sc('📉','Total de Despesas',t.tDesp,'red'),sc('✅','Despesas Pagas',t.tPago,'green'),
-    sc('⏳','Despesas Pendentes',t.tPend,'yellow'),sc('⚠️','Em Atraso',t.tAtras,'red')
-  ].join('');
+  // ── Gráfico de Barras: Receitas vs Despesas ──
+  mkChart('chart-bar',{
+    type:'bar',
+    data:{
+      labels:trendLabels,
+      datasets:[
+        {label:'Receitas',data:trendData.map(d=>d.tRec),backgroundColor:'rgba(16,185,129,.75)',borderRadius:5,borderSkipped:false},
+        {label:'Despesas',data:trendData.map(d=>d.tDesp),backgroundColor:'rgba(239,68,68,.75)',borderRadius:5,borderSkipped:false}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12,padding:10}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw)}`}}},
+      scales:{
+        y:{ticks:{callback:v=>v>=1000?`R$${(v/1000).toFixed(0)}k`:brl(v),font:{size:10}},grid:{color:'rgba(0,0,0,.04)'}},
+        x:{ticks:{font:{size:10}},grid:{display:false}}
+      }
+    }
+  });
 
-  document.getElementById('d-saldo').innerHTML=[
-    sc('🔮','Saldo Previsto',t.saldo,t.saldo>=0?'green':'red'),
-    sc('💵','Saldo Real',t.saldoR,t.saldoR>=0?'green':'red')
-  ].join('');
+  // ── Gráfico Donut: Categorias ──
+  const inPeriod=x=>isAnual?+x.ano===cA:+x.mes===cM&&+x.ano===cA;
+  const catMap={};
+  [...APP.despesasFixas,...APP.despesasVariaveis].filter(inPeriod).forEach(d=>{const c=d.categoria||'Outros';catMap[c]=(catMap[c]||0)+parseBRL(d.valor)});
+  APP.parcelas.filter(p=>isAnual?+p.ano===cA:+p.mes===cM&&+p.ano===cA).forEach(p=>{catMap['Cartão de Crédito']=(catMap['Cartão de Crédito']||0)+parseBRL(p.valorParcela)});
+  const catArr=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const COLORS=['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899','#64748B'];
+  if(catArr.length){
+    mkChart('chart-donut',{
+      type:'doughnut',
+      data:{
+        labels:catArr.slice(0,9).map(([c])=>c),
+        datasets:[{data:catArr.slice(0,9).map(([,v])=>v),backgroundColor:COLORS,borderWidth:2,borderColor:'#fff',hoverOffset:6}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,cutout:'62%',
+        plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:11,padding:8}},
+          tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw)}`}}}
+      }
+    });
+  }else{
+    const el=document.getElementById('chart-donut');
+    if(el){const ctx=el.getContext('2d');ctx.clearRect(0,0,el.width,el.height);}
+  }
 
-  // Por pessoa
-  const allDesp=[...APP.despesasFixas,...APP.despesasVariaveis].filter(inM);
-  const pRow=(p)=>{const rec=APP.receitas.filter(r=>inM(r)&&r.pessoa===p).reduce((s,r)=>s+parseBRL(r.valor),0);const dep=allDesp.filter(d=>d.pessoa===p).reduce((s,d)=>s+parseBRL(d.valor),0);return`<div style="display:flex;justify-content:space-between;padding:.42rem 0;border-bottom:1px solid var(--border)"><div>${bdgPessoa(p)}</div><div style="text-align:right;font-size:.77rem"><div>Rec: <strong class="text-green">${brl(rec)}</strong></div><div>Dep: <strong class="text-red">${brl(dep)}</strong></div></div></div>`;};
+  // ── Status de Pagamentos ──
+  const pagoP=t.tDesp>0?Math.round(t.tPago/t.tDesp*100):0;
+  const pendP=100-pagoP;
+  const progRow=(label,val,total,color)=>{
+    const p=total>0?Math.round(val/total*100):0;
+    return`<div style="margin-bottom:.75rem">
+      <div class="dash-stat-row" style="border:none;padding:.1rem 0 .2rem"><span>${label}</span><strong style="color:${color}">${brl(val)} · ${p}%</strong></div>
+      <div class="dash-prog-bar"><div class="dash-prog-fill" style="width:${p}%;background:${color}"></div></div>
+    </div>`;
+  };
+  document.getElementById('d-status').innerHTML=
+    progRow('✅ Pago',t.tPago,t.tDesp,'#10B981')+
+    progRow('⏳ A Pagar',t.tPend,t.tDesp,'#F59E0B')+
+    (t.tAtras>0?progRow('⚠️ Em Atraso',t.tAtras,t.tDesp,'#EF4444'):'')+
+    `<div style="border-top:1px solid var(--border);margin-top:.75rem;padding-top:.75rem">
+      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:.6rem">Top Categorias</div>
+      ${catArr.slice(0,6).map(([c,v],idx)=>{
+        const p=t.tDesp>0?Math.round(v/t.tDesp*100):0;
+        return`<div style="margin-bottom:.55rem">
+          <div class="dash-stat-row" style="border:none;padding:.1rem 0 .15rem"><span style="font-size:.79rem">${c}</span><span style="font-size:.79rem;color:var(--text3)">${brl(v)} · ${p}%</span></div>
+          <div class="dash-prog-bar" style="height:5px"><div class="dash-prog-fill" style="width:${p}%;background:${COLORS[idx%COLORS.length]}"></div></div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  // ── Por Pessoa ──
+  const pRow=(p)=>{
+    const rec=APP.receitas.filter(r=>inPeriod(r)&&r.pessoa===p).reduce((s,r)=>s+parseBRL(r.valor),0);
+    const dep=[...APP.despesasFixas,...APP.despesasVariaveis].filter(d=>inPeriod(d)&&d.pessoa===p).reduce((s,d)=>s+parseBRL(d.valor),0);
+    const saldoP=rec-dep;
+    return`<div class="dash-stat-row"><div>${bdgPessoa(p)}</div><div style="text-align:right;font-size:.77rem;line-height:1.7">
+      <div>Rec: <strong class="text-green">${brl(rec)}</strong></div>
+      <div>Dep: <strong class="text-red">${brl(dep)}</strong></div>
+      <div>Saldo: <strong class="${saldoP>=0?'text-green':'text-red'}">${brl(saldoP)}</strong></div>
+    </div></div>`;
+  };
   document.getElementById('d-pessoa').innerHTML=['p1','p2','ambos'].map(pRow).join('');
-
-  // Por categoria
-  const catMap={};allDesp.forEach(d=>{const c=d.categoria||'Outros';catMap[c]=(catMap[c]||0)+parseBRL(d.valor)});
-  const sorted=Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0,9);
-  document.getElementById('d-cat').innerHTML=sorted.length?sorted.map(([c,v])=>`<div style="display:flex;justify-content:space-between;padding:.38rem 0;border-bottom:1px solid var(--border);font-size:.82rem"><span>${c}</span><strong>${brl(v)}</strong></div>`).join(''):'<p class="text-muted" style="font-size:.85rem">Sem dados</p>';
 }
 
 // ═══ TABELA MENSAL ═══
@@ -2096,6 +2274,107 @@ function confirmCardStatementImport(){
   APP.importacoesCartao.push({id:gid(),arquivo:file.name,banco:CARD_IMPORT.bank,finalCartao:CARD_IMPORT.selectedFinal||'',cartaoId,mes:+V('imp-mes'),ano:+V('imp-ano'),data:new Date().toISOString(),linhas:CARD_IMPORT.rows.length,importadas:imported,duplicadas:dups,puladas:skipped});
   save();closeM('mod-import-cartao');renderCartoes();
   toast(`${imported} compra(s) importada(s). ${dups} duplicada(s) ignorada(s).`,'success',4500);
+}
+
+// ═══ IMPORTAR POR PLANILHA ═══
+let PIL_ROW_ID=0;
+function openMImportPlanilha(){
+  if(!APP.cartoes.length){toast('Cadastre um cartão antes de importar.','warning');return}
+  fillMA('pil-mes','pil-ano');
+  document.getElementById('pil-pessoa').innerHTML=`<option value="p1">${escHtml(APP.config.p1)}</option><option value="p2">${escHtml(APP.config.p2)}</option><option value="ambos">Ambos</option>`;
+  document.getElementById('pil-paste').value='';
+  document.getElementById('pil-tbody').innerHTML='';
+  PIL_ROW_ID=0;
+  pilAddRow();
+  openM('mod-import-planilha');
+}
+function pilCartaoOpts(sel){
+  return APP.cartoes.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${escHtml(c.nome)}</option>`).join('');
+}
+function pilCatOpts(sel){
+  return APP.config.cats.map(c=>`<option value="${escHtml(c)}" ${c===sel?'selected':''}>${escHtml(c)}</option>`).join('');
+}
+function pilAddRow(cartaoId='',desc='',cat='',parc='',valor=''){
+  const i=++PIL_ROW_ID;
+  const defaultCard=cartaoId||APP.cartoes[0]?.id||'';
+  const defaultCat=cat&&cat!=='-'?cat:(guessCardCategory(desc)||APP.config.cats[0]||'Outros');
+  const tr=document.createElement('tr');
+  tr.id=`pil-r-${i}`;
+  tr.style.borderBottom='1px solid var(--border)';
+  tr.innerHTML=`
+    <td style="padding:.3rem .4rem"><select style="width:100%;font-size:.82rem;padding:.2rem">${pilCartaoOpts(defaultCard)}</select></td>
+    <td style="padding:.3rem .4rem"><input type="text" value="${escHtml(desc)}" placeholder="Descrição da compra" style="width:100%;font-size:.82rem;padding:.2rem"></td>
+    <td style="padding:.3rem .4rem"><select style="width:100%;font-size:.82rem;padding:.2rem">${pilCatOpts(defaultCat)}</select></td>
+    <td style="padding:.3rem .4rem"><input type="text" value="${escHtml(parc)}" placeholder="—" style="width:100%;font-size:.82rem;padding:.2rem;text-align:center" maxlength="10"></td>
+    <td style="padding:.3rem .4rem"><input type="text" value="${escHtml(valor)}" placeholder="0,00" style="width:100%;font-size:.82rem;padding:.2rem;text-align:right"></td>
+    <td style="padding:.3rem .2rem;text-align:center"><button onclick="document.getElementById('pil-r-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:1rem;line-height:1" title="Remover">✕</button></td>`;
+  document.getElementById('pil-tbody').appendChild(tr);
+}
+function pilParcelas(s){
+  const str=String(s||'').trim();
+  if(!str||str==='-'||str==='—')return{parcelaAtual:1,qtdParcelas:1};
+  const m=str.match(/(\d+)\s*[|\/]\s*(\d+)/);
+  if(m){const a=+m[1],t=+m[2];if(a>=1&&t>=a&&t<=48)return{parcelaAtual:a,qtdParcelas:t}}
+  return{parcelaAtual:1,qtdParcelas:1};
+}
+function pilParsePaste(text){
+  const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return;
+  document.getElementById('pil-tbody').innerHTML='';
+  PIL_ROW_ID=0;
+  const isParcStr=s=>/^(\d+\s*[|\/]\s*\d+|[-—]|\s*)$/.test((s||'').trim());
+  const isMoneyStr=s=>/\d/.test((s||'').trim().replace(/[R$\s.,]/g,''));
+  lines.forEach(line=>{
+    const c=line.split('\t');
+    let cartaoNome,desc,cat='',parc='',valor='';
+    // Formato: Cartão | Descrição | Categoria | Parcelas | Valor (5 cols)
+    if(c.length>=5&&isParcStr(c[3])&&isMoneyStr(c[4])){
+      [cartaoNome,desc,cat,parc,valor]=c;
+    // Formato sem categoria: Cartão | Descrição | Parcelas | Valor (4 cols)
+    }else if(c.length>=4&&isParcStr(c[2])&&isMoneyStr(c[3])){
+      [cartaoNome,desc,parc,valor]=c;
+    }else{
+      [cartaoNome,desc,parc,valor]=c;
+    }
+    cartaoNome=(cartaoNome||'').trim();
+    desc=(desc||'').trim();
+    cat=(cat||'').trim().replace(/^[-—]$/,'');
+    parc=(parc||'').trim().replace(/—/g,'-');
+    valor=(valor||'').trim().replace(/R\$\s*/,'').replace(/\./g,'').trim();
+    const cart=APP.cartoes.find(c=>c.nome.toLowerCase().includes(cartaoNome.toLowerCase()));
+    if(desc||valor)pilAddRow(cart?.id||APP.cartoes[0]?.id||'',desc,cat,parc,valor);
+  });
+  if(!document.querySelectorAll('#pil-tbody tr').length)pilAddRow();
+}
+function pilImportar(){
+  const mes=+V('pil-mes'),ano=+V('pil-ano'),pessoa=V('pil-pessoa'),status=V('pil-status');
+  const rows=document.querySelectorAll('#pil-tbody tr');
+  if(!rows.length){toast('Adicione ao menos uma linha.','warning');return}
+  let imported=0,erros=0;
+  rows.forEach(tr=>{
+    const sels=tr.querySelectorAll('select');
+    const inputs=tr.querySelectorAll('input');
+    const cartaoId=sels[0]?.value||'';
+    const cat=sels[1]?.value||'';
+    const desc=(inputs[0]?.value||'').trim();
+    const parc=(inputs[1]?.value||'').trim();
+    const valor=parseBRL(inputs[2]?.value||'');
+    if(!cartaoId||!desc||!valor){erros++;return}
+    const{parcelaAtual,qtdParcelas}=pilParcelas(parc);
+    const first=addMonthsYM(mes,ano,-(parcelaAtual-1));
+    buildCardPurchase({
+      descricao:desc,cartaoId,pessoa,categoria:cat||guessCardCategory(desc),
+      valorParcela:moneyInput(valor),valorTotal:moneyInput(valor*qtdParcelas),qtdParcelas,
+      dataCompra:`${first.a}-${String(first.m).padStart(2,'0')}-01`,
+      primeiraFaturaMes:first.m,primeiraFaturaAno:first.a,
+      status,parcelaAtual,obs:'Importado por planilha',origem:'planilha-manual',
+      importParcelaAtual:parcelaAtual,importTotalParcelas:qtdParcelas
+    },{skipDuplicate:true});
+    imported++;
+  });
+  save();closeM('mod-import-planilha');renderCartoes();
+  if(cMod==='tabela')renderTabela();
+  toast(`${imported} compra(s) importada(s)${erros?`. ${erros} linha(s) ignoradas (dados incompletos)`:'.'}`,'success',4500);
 }
 
 // ═══ PARCELAS ═══
