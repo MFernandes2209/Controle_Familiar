@@ -463,6 +463,15 @@ body.auth-locked .auth-screen{display:flex}
     </div>
   </div>
 
+  <!-- Gráfico Cartão de Crédito por Categoria -->
+  <div class="card mt2">
+    <div class="card-header">
+      <div class="card-title">💳 Cartão de Crédito — Gastos por Categoria</div>
+      <span id="cc-cat-total" style="font-size:.82rem;color:var(--text3);font-weight:600"></span>
+    </div>
+    <div style="position:relative;height:240px"><canvas id="chart-cc-cat"></canvas></div>
+  </div>
+
   <!-- Status + Pessoas -->
   <div class="two-col mt2">
     <div class="card">
@@ -912,6 +921,22 @@ body.auth-locked .auth-screen{display:flex}
   </div>
 </div>
 
+<!-- Modal: Limpar Compras do Cartão -->
+<div class="moverlay" id="mod-clr-card">
+  <div class="modal sm"><div class="mh"><div class="mh-title">♻️ Limpar Compras do Cartão</div><button class="mclose" onclick="closeM('mod-clr-card')">✕</button></div>
+  <div class="mb">
+    <input type="hidden" id="clr-card-id">
+    <p style="margin-bottom:.6rem;color:var(--text2)">Deseja excluir <strong>todas as compras</strong> do cartão:</p>
+    <p style="font-family:var(--serif);font-size:1.1rem;font-weight:600;margin-bottom:.4rem" id="clr-card-nome"></p>
+    <div id="clr-card-info" style="font-size:.82rem;color:var(--text3);margin-bottom:.9rem"></div>
+    <div style="background:var(--danger-l);border:1px solid #fca5a5;border-radius:var(--r-sm);padding:.65rem .9rem;font-size:.82rem;color:var(--danger-d)">
+      ⚠️ Isso remove todas as compras e parcelas deste cartão permanentemente. Use para limpar antes de uma nova importação.
+    </div>
+  </div>
+  <div class="mf"><button class="btn btn-outline" onclick="closeM('mod-clr-card')">Cancelar</button><button class="btn btn-danger" onclick="confirmClearCard()">Excluir tudo</button></div>
+  </div>
+</div>
+
 <!-- Modal: Tarefa -->
 <div class="moverlay" id="mod-tarefa">
   <div class="modal sm"><div class="mh"><div class="mh-title" id="t-mtitle">Nova Tarefa</div><button class="mclose" onclick="closeM('mod-tarefa')">✕</button></div>
@@ -1357,6 +1382,51 @@ function renderDash(){
     if(el){const ctx=el.getContext('2d');ctx.clearRect(0,0,el.width,el.height);}
   }
 
+  // ── Gráfico Cartão de Crédito por Categoria ──
+  const ccCatMap={};
+  APP.parcelas.filter(p=>inPeriod(p)).forEach(p=>{
+    const compra=APP.comprasCartao.find(c=>c.id===p.compraId);
+    const cat=compra?.categoria||'Outros';
+    ccCatMap[cat]=(ccCatMap[cat]||0)+parseBRL(p.valorParcela);
+  });
+  const ccCatArr=Object.entries(ccCatMap).sort((a,b)=>b[1]-a[1]);
+  const ccTotal=ccCatArr.reduce((s,[,v])=>s+v,0);
+  const ccTotalEl=document.getElementById('cc-cat-total');
+  if(ccTotalEl)ccTotalEl.textContent=ccTotal>0?`Total: ${brl(ccTotal)}`:'';
+  if(ccCatArr.length){
+    mkChart('chart-cc-cat',{
+      type:'bar',
+      data:{
+        labels:ccCatArr.map(([c])=>c),
+        datasets:[{
+          label:'Valor',
+          data:ccCatArr.map(([,v])=>v),
+          backgroundColor:ccCatArr.map((_,i)=>COLORS[i%COLORS.length]),
+          borderRadius:6,borderSkipped:false
+        }]
+      },
+      options:{
+        indexAxis:'y',
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>{
+            const pct=ccTotal>0?Math.round(ctx.raw/ccTotal*100):0;
+            return` ${brl(ctx.raw)} · ${pct}%`;
+          }}}
+        },
+        scales:{
+          x:{ticks:{callback:v=>v>=1000?`R$${(v/1000).toFixed(0)}k`:brl(v),font:{size:10}},grid:{color:'rgba(0,0,0,.04)'}},
+          y:{ticks:{font:{size:11}},grid:{display:false}}
+        }
+      }
+    });
+  }else{
+    const el=document.getElementById('chart-cc-cat');
+    if(el){const ctx=el.getContext('2d');ctx.clearRect(0,0,el.width,el.height);}
+    if(ccTotalEl)ccTotalEl.textContent='Sem compras no cartão neste período';
+  }
+
   // ── Status de Pagamentos ──
   const pagoP=t.tDesp>0?Math.round(t.tPago/t.tDesp*100):0;
   const pendP=100-pagoP;
@@ -1745,8 +1815,9 @@ function renderCartoes(){
       const disp=lim-saldoAberto;
       return`<div class="cc-card" style="background:linear-gradient(135deg,${c.cor||'#1E2D40'} 0%,${c.cor||'#2D4A6A'}cc 100%)" onclick="filterCC('${c.id}')">
         <div style="position:absolute;top:.7rem;right:.7rem;display:flex;gap:3px;z-index:1">
-          <button class="btn btn-ghost btn-sm btn-icon" style="color:rgba(255,255,255,.65)" onclick="event.stopPropagation();editCartao('${c.id}')">✏️</button>
-          <button class="btn btn-ghost btn-sm btn-icon" style="color:rgba(255,255,255,.65)" onclick="event.stopPropagation();delConfirm('cartoes','${c.id}','${c.nome}',true)">🗑️</button>
+          <button class="btn btn-ghost btn-sm btn-icon" style="color:rgba(255,255,255,.65)" onclick="event.stopPropagation();editCartao('${c.id}')" title="Editar cartão">✏️</button>
+          <button class="btn btn-ghost btn-sm btn-icon" style="color:rgba(255,255,255,.65)" onclick="event.stopPropagation();openClearCardConfirm('${c.id}')" title="Limpar compras para nova importação">♻️</button>
+          <button class="btn btn-ghost btn-sm btn-icon" style="color:rgba(255,255,255,.65)" onclick="event.stopPropagation();delConfirm('cartoes','${c.id}','${c.nome}',true)" title="Excluir cartão">🗑️</button>
         </div>
         <div><div class="cc-name">${pLabel(c.titular)}</div><div class="cc-bank">${c.nome}</div></div>
         <div><div class="cc-fatura">Fatura ${MONTHS[cM-1]}</div><div class="cc-amount">${brl(fat)}</div>
@@ -1794,6 +1865,27 @@ function saveCartao(){
   const id=V('cc-id');
   const d={id:id||gid(),nome,banco:V('cc-banco'),titular:V('cc-titular'),limite:V('cc-limite'),fechamento:V('cc-fecha'),vencimento:V('cc-venc'),cor:V('cc-cor')};
   upsert('cartoes',d,id);save();closeM('mod-cartao');toast('Cartão salvo!','success');renderCartoes();
+}
+function openClearCardConfirm(cartaoId){
+  const cart=APP.cartoes.find(c=>c.id===cartaoId);if(!cart)return;
+  const nCompras=APP.comprasCartao.filter(c=>c.cartaoId===cartaoId).length;
+  const nParcelas=APP.parcelas.filter(p=>p.cartaoId===cartaoId).length;
+  const total=APP.parcelas.filter(p=>p.cartaoId===cartaoId).reduce((s,p)=>s+parseBRL(p.valorParcela),0);
+  document.getElementById('clr-card-id').value=cartaoId;
+  document.getElementById('clr-card-nome').textContent=cart.nome;
+  document.getElementById('clr-card-info').innerHTML=
+    `${nCompras} compra(s) &nbsp;·&nbsp; ${nParcelas} parcela(s) &nbsp;·&nbsp; Total: <strong>${brl(total)}</strong>`;
+  if(!nCompras&&!nParcelas){toast('Nenhuma compra cadastrada neste cartão.','warning');return}
+  openM('mod-clr-card');
+}
+function confirmClearCard(){
+  const cartaoId=document.getElementById('clr-card-id').value;
+  const cart=APP.cartoes.find(c=>c.id===cartaoId);
+  APP.comprasCartao=APP.comprasCartao.filter(c=>c.cartaoId!==cartaoId);
+  APP.parcelas=APP.parcelas.filter(p=>p.cartaoId!==cartaoId);
+  save();closeM('mod-clr-card');renderCartoes();
+  if(cMod==='tabela')renderTabela();
+  toast(`✅ Compras de "${cart?.nome||''}" excluídas. Pronto para nova importação.`,'success',4000);
 }
 function moneyInput(v){
   const n=Number(v)||0;
