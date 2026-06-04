@@ -44,6 +44,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);line-height:
 .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
 .sync-dot.ok{background:var(--success)}
 .sync-dot.spin{background:var(--warning);animation:pulse 1s infinite}
+.sync-dot.offline{background:var(--danger)}
+.sync-dot.dirty{background:var(--primary);animation:pulse .8s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}
 
@@ -1115,8 +1117,54 @@ let TBL_OPEN={};
 let CARD_IMPORT={file:null,bank:'',rows:[],allRows:[],text:'',hash:'',finals:[],selectedFinal:''};
 
 // ═══ PERSISTENCE ═══
-function save(){try{localStorage.setItem('fin_app',JSON.stringify(APP));}catch(e){}}
-function load(){try{const d=localStorage.getItem('fin_app');if(d)APP={...APP,...JSON.parse(d)};if(!APP.importacoesCartao)APP.importacoesCartao=[];}catch(e){}}
+function save(){
+  try{localStorage.setItem('fin_app',JSON.stringify(APP));}catch(e){}
+  scheduleSyncToGS();
+}
+function sanitizeLoadedData(){
+  // Corrige valores com ponto como decimal (ex: '2409.81' → '2.409,81')
+  // e datas em formato não-ISO (ex: 'Sat Jun 13 2026...' → '2026-06-13')
+  const fixVal=v=>{
+    if(!v)return v;
+    const s=String(v);
+    if(s.includes(','))return v; // já está no formato correto
+    const parts=s.split('.');
+    if(parts.length===2&&parts[1].length<=2){
+      // ponto é decimal: converter para formato BR
+      return moneyInput(parseFloat(s)||0);
+    }
+    return v;
+  };
+  const fixDate=d=>{
+    if(!d)return d;
+    const s=String(d);
+    if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+    const dt=new Date(d);
+    return isNaN(dt.getTime())?d:dt.toISOString().split('T')[0];
+  };
+  [...APP.despesasFixas,...APP.despesasVariaveis,...APP.receitas,...APP.investimentos].forEach(item=>{
+    if(item.valor!==undefined)item.valor=fixVal(item.valor);
+    if(item.data!==undefined)item.data=fixDate(item.data);
+  });
+  APP.parcelas.forEach(p=>{
+    if(p.valorParcela!==undefined)p.valorParcela=fixVal(p.valorParcela);
+    if(p.vencimento!==undefined)p.vencimento=fixDate(p.vencimento);
+  });
+  APP.comprasCartao.forEach(c=>{
+    if(c.valorParcela!==undefined)c.valorParcela=fixVal(c.valorParcela);
+    if(c.valorTotal!==undefined)c.valorTotal=fixVal(c.valorTotal);
+    if(c.dataCompra!==undefined)c.dataCompra=fixDate(c.dataCompra);
+  });
+}
+function load(){
+  try{
+    const d=localStorage.getItem('fin_app');
+    if(d)APP={...APP,...JSON.parse(d)};
+    if(!APP.importacoesCartao)APP.importacoesCartao=[];
+    sanitizeLoadedData();
+    save(); // persiste os dados sanitizados
+  }catch(e){}
+}
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
 // ═══ AUTH ═══
@@ -1277,9 +1325,33 @@ function logout(){
 
 // ═══ FORMATTERS ═══
 function brl(v){return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(+v||0)}
-function parseBRL(s){if(!s)return 0;return parseFloat(String(s).replace(/\./g,'').replace(',','.'))||0}
+function parseBRL(s){
+  if(!s)return 0;
+  const str=String(s).trim().replace(/\s*R\$\s*/g,'');
+  // Se tem vírgula: formato brasileiro (ponto = milhar, vírgula = decimal)
+  if(str.includes(',')){return parseFloat(str.replace(/\./g,'').replace(',','.'))||0}
+  // Sem vírgula: verificar se ponto é decimal ou milhar
+  const parts=str.split('.');
+  // Exatamente um ponto com ≤ 2 casas → ponto é decimal (ex: 2409.81)
+  if(parts.length===2&&parts[1].length<=2){return parseFloat(str)||0}
+  // Mais de um ponto ou grupo > 2 dígitos → pontos são separadores de milhar
+  return parseFloat(str.replace(/\./g,''))||0;
+}
 function mask(el){let v=el.value.replace(/\D/g,'');v=(parseInt(v||'0')/100).toFixed(2);el.value=v.replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')}
-function fmtDate(d){if(!d)return'—';return new Date(d+'T00:00').toLocaleDateString('pt-BR')}
+function toIsoDate(d){
+  if(!d)return'';
+  const s=String(d);
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  const dt=new Date(d);
+  return isNaN(dt.getTime())?'':dt.toISOString().split('T')[0];
+}
+function fmtDate(d){
+  if(!d)return'—';
+  const s=String(d);
+  // Formato ISO: appenda T00:00 para evitar problemas de timezone
+  const dt=/^\d{4}-\d{2}-\d{2}/.test(s)?new Date(s+'T00:00'):new Date(d);
+  return isNaN(dt.getTime())?'—':dt.toLocaleDateString('pt-BR');
+}
 function pLabel(p){return p==='p1'?APP.config.p1:p==='p2'?APP.config.p2:'Ambos'}
 
 function bdgStatus(s){const m={pago:'badge-pago',pendente:'badge-pendente',atrasado:'badge-atrasado',cancelado:'badge-cancelado',concluida:'badge-pago',andamento:'badge-blue',desejado:'badge-blue',pesquisando:'badge-pendente',comprado:'badge-pago',descartado:'badge-cancelado'};const l={pago:'✓ Pago',pendente:'⏳ Pendente',atrasado:'⚠ Atrasado',cancelado:'✕ Cancelado',concluida:'✓ Concluída',andamento:'▶ Andamento',desejado:'⭐ Desejado',pesquisando:'🔍 Pesquisando',comprado:'✓ Comprado',descartado:'✕ Descartado'};return`<span class="badge ${m[s]||''}">${l[s]||s}</span>`}
@@ -1920,7 +1992,7 @@ function openMDV(item){
   document.getElementById('dv-id').value=item?.id||'';
   document.getElementById('dv-desc').value=item?.descricao||'';
   document.getElementById('dv-valor').value=item?.valor||'';
-  document.getElementById('dv-data').value=item?.data||new Date().toISOString().split('T')[0];
+  document.getElementById('dv-data').value=toIsoDate(item?.data)||new Date().toISOString().split('T')[0];
   document.getElementById('dv-pessoa').value=item?.pessoa||'p1';
   document.getElementById('dv-fp').value=item?.formaPagamento||'pix';
   document.getElementById('dv-status').value=item?.status||'pago';
@@ -2880,10 +2952,55 @@ function updatePersonUI(){
   document.querySelectorAll('option[value="p1"]').forEach(o=>o.textContent=APP.config.p1);
   document.querySelectorAll('option[value="p2"]').forEach(o=>o.textContent=APP.config.p2);
 }
-function salvarGS(){APP.config.gsUrl=document.getElementById('cfg-gs').value;save();if(APP.config.gsUrl){setSyncUI('ok','Google Sheets');toast('Google Sheets conectado!','success');}else{setSyncUI('','Local')}}
+function salvarGS(){
+  APP.config.gsUrl=document.getElementById('cfg-gs').value.trim();
+  LOADING_FROM_GS=true;save();LOADING_FROM_GS=false;
+  if(APP.config.gsUrl){
+    setSyncUI('ok','Google Sheets');
+    startAutoSync();
+    toast('✅ Google Sheets conectado! Sincronização automática ativada.','success',4000);
+    if(navigator.onLine)loadFromGS();
+  }else{
+    stopAutoSync();
+    setSyncUI('','Local');
+    toast('Desconectado do Google Sheets','warning');
+  }
+}
 function addCat(){const n=document.getElementById('nova-cat').value.trim();if(!n)return;if(!APP.config.cats.includes(n))APP.config.cats.push(n);document.getElementById('nova-cat').value='';save();renderConfig();toast(`Categoria "${n}" adicionada!`,'success')}
 function rmCat(i){APP.config.cats.splice(i,1);save();renderConfig()}
 function setSyncUI(type,text){document.getElementById('sdot').className=`sync-dot ${type}`;document.getElementById('stxt').textContent=text}
+
+// ═══ AUTO-SYNC ═══
+let SYNC_DEBOUNCE=null;
+let SYNC_AUTO_INTERVAL=null;
+let SYNC_DIRTY=false;
+let LOADING_FROM_GS=false;
+
+function scheduleSyncToGS(){
+  if(!APP.config.gsUrl||LOADING_FROM_GS)return;
+  SYNC_DIRTY=true;
+  setSyncUI('dirty','A enviar...');
+  clearTimeout(SYNC_DEBOUNCE);
+  SYNC_DEBOUNCE=setTimeout(async()=>{
+    if(!navigator.onLine){setSyncUI('offline','Offline — aguardando conexão');return}
+    await syncGS();
+    SYNC_DIRTY=false;
+  },3000);
+}
+
+function startAutoSync(){
+  if(SYNC_AUTO_INTERVAL)clearInterval(SYNC_AUTO_INTERVAL);
+  if(!APP.config.gsUrl)return;
+  SYNC_AUTO_INTERVAL=setInterval(()=>{
+    if(!navigator.onLine||!APP.config.gsUrl||SYNC_DIRTY)return;
+    loadFromGS(true); // silent pull
+  },5*60*1000);
+}
+
+function stopAutoSync(){
+  clearInterval(SYNC_AUTO_INTERVAL);
+  SYNC_AUTO_INTERVAL=null;
+}
 
 // ═══ GOOGLE SHEETS SYNC ═══
 async function syncGS(){
@@ -2907,9 +3024,11 @@ async function syncGS(){
   }
 }
 
-async function loadFromGS(){
-  if(!APP.config.gsUrl){toast('Configure a URL do Google Sheets primeiro!','warning');return}
-  setSyncUI('spin','Carregando...');
+async function loadFromGS(silent=false){
+  if(!APP.config.gsUrl){if(!silent)toast('Configure a URL do Google Sheets primeiro!','warning');return}
+  if(!silent)setSyncUI('spin','Carregando...');
+  else setSyncUI('spin','Atualizando...');
+  LOADING_FROM_GS=true;
   try{
     // GET funciona normalmente com CORS no Apps Script
     const r=await fetch(APP.config.gsUrl+'?action=getData',{method:'GET',mode:'cors'});
@@ -2932,14 +3051,18 @@ async function loadFromGS(){
         if(d.config.p2)  APP.config.p2=d.config.p2;
         if(d.config.cats){try{APP.config.cats=JSON.parse(d.config.cats);}catch(e){}}
       }
-      save();updatePersonUI();syncAuthNamesFromConfig();
-      setSyncUI('ok','Carregado: '+new Date().toLocaleTimeString('pt-BR'));
-      toast('✅ Dados carregados do Google Sheets!','success');
+      LOADING_FROM_GS=true;save();LOADING_FROM_GS=false;
+      sanitizeLoadedData();
+      updatePersonUI();syncAuthNamesFromConfig();
+      setSyncUI('ok','Sync: '+new Date().toLocaleTimeString('pt-BR'));
+      if(!silent)toast('✅ Dados carregados do Google Sheets!','success');
       render(cMod);
     } else throw new Error(j.error||'Sem dados na planilha');
   }catch(e){
-    setSyncUI('','Erro');
-    toast('Erro ao carregar: '+e.message,'error');
+    setSyncUI(navigator.onLine?'':'offline',navigator.onLine?'Erro GS':'Offline');
+    if(!silent)toast('Erro ao carregar: '+e.message,'error');
+  }finally{
+    LOADING_FROM_GS=false;
   }
 }
 
@@ -3063,9 +3186,40 @@ function init(){
   document.getElementById('selM').value=cM;
   document.getElementById('selA').value=cA;
   updatePersonUI();
-  if(APP.config.gsUrl)setSyncUI('ok','Google Sheets');
   if(!requireAuth())return;
   renderDash();
+
+  if(APP.config.gsUrl){
+    // Carrega do GS na abertura
+    if(navigator.onLine){
+      setSyncUI('spin','Sincronizando...');
+      loadFromGS(true);
+    }else{
+      setSyncUI('offline','Offline');
+    }
+    startAutoSync();
+  }
+
+  // Online: sincroniza mudanças pendentes ou puxa atualização
+  window.addEventListener('online',()=>{
+    if(!APP.config.gsUrl)return;
+    toast('📶 Conexão restaurada — sincronizando...','success',2500);
+    if(SYNC_DIRTY)syncGS().then(()=>{SYNC_DIRTY=false;});
+    else loadFromGS(true);
+  });
+
+  // Offline: alerta usuário
+  window.addEventListener('offline',()=>{
+    setSyncUI('offline','Offline — salvando localmente');
+    if(APP.config.gsUrl)toast('📵 Sem conexão — dados salvos localmente, serão enviados ao reconectar','warning',4000);
+  });
+
+  // Visibilidade: quando volta ao app no celular, sincroniza
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden||!APP.config.gsUrl||!navigator.onLine)return;
+    if(SYNC_DIRTY)syncGS().then(()=>{SYNC_DIRTY=false;});
+    else loadFromGS(true);
+  });
 }
 init();
 </script>
