@@ -1737,8 +1737,12 @@ function renderCartoes(){
   if(APP.cartoes.length){
     ccEl.innerHTML=APP.cartoes.map(c=>{
       const fat=APP.parcelas.filter(p=>p.cartaoId===c.id&&+p.mes===cM&&+p.ano===cA).reduce((s,p)=>s+parseBRL(p.valorParcela),0);
-      const lim=parseBRL(c.limite)||0;const pct=lim>0?Math.min(fat/lim*100,100):0;
-      const progCol=pct>80?'#fca5a5':'#86efac';
+      // Saldo total comprometido = todas as parcelas pendentes/atrasadas (meses presentes e futuros)
+      const saldoAberto=APP.parcelas.filter(p=>p.cartaoId===c.id&&p.status!=='pago').reduce((s,p)=>s+parseBRL(p.valorParcela),0);
+      const lim=parseBRL(c.limite)||0;
+      const pct=lim>0?Math.min(saldoAberto/lim*100,100):0;
+      const progCol=pct>85?'#fca5a5':pct>60?'#fde68a':'#86efac';
+      const disp=lim-saldoAberto;
       return`<div class="cc-card" style="background:linear-gradient(135deg,${c.cor||'#1E2D40'} 0%,${c.cor||'#2D4A6A'}cc 100%)" onclick="filterCC('${c.id}')">
         <div style="position:absolute;top:.7rem;right:.7rem;display:flex;gap:3px;z-index:1">
           <button class="btn btn-ghost btn-sm btn-icon" style="color:rgba(255,255,255,.65)" onclick="event.stopPropagation();editCartao('${c.id}')">✏️</button>
@@ -1747,7 +1751,8 @@ function renderCartoes(){
         <div><div class="cc-name">${pLabel(c.titular)}</div><div class="cc-bank">${c.nome}</div></div>
         <div><div class="cc-fatura">Fatura ${MONTHS[cM-1]}</div><div class="cc-amount">${brl(fat)}</div>
           ${lim>0?`<div class="cc-prog"><div class="cc-prog-fill" style="width:${pct}%;background:${progCol}"></div></div>
-          <div style="font-size:.67rem;opacity:.65;margin-top:.2rem">Limite: ${brl(lim)} | Disp: ${brl(lim-fat)}</div>`:''}
+          <div style="font-size:.67rem;opacity:.65;margin-top:.25rem">Limite: ${brl(lim)} | Disp: <strong style="color:${disp<0?'#fca5a5':progCol}">${brl(disp)}</strong></div>
+          ${saldoAberto>fat?`<div style="font-size:.63rem;opacity:.55;margin-top:.1rem">Em aberto (c/ futuras): ${brl(saldoAberto)}</div>`:''}`:''}
         </div></div>`;
     }).join('');
   } else {
