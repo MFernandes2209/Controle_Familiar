@@ -790,15 +790,27 @@ body.auth-locked .auth-screen{display:flex}
       <div class="fg"><label>Pessoa</label><select id="df-pessoa"><option value="p1">Pessoa 1</option><option value="p2">Pessoa 2</option><option value="ambos">Ambos</option></select></div>
       <div class="fg"><label>Forma de Pagamento</label><select id="df-fp"><option value="pix">Pix</option><option value="debito">Débito</option><option value="credito">Cartão de Crédito</option><option value="boleto">Boleto</option><option value="debito-auto">Débito Automático</option><option value="dinheiro">Dinheiro</option><option value="outro">Outro</option></select></div>
       <div class="fg"><label>Status</label><select id="df-status"><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="atrasado">Atrasado</option></select></div>
-      <div class="fg"><label>Mês *</label><select id="df-mes"></select></div>
-      <div class="fg"><label>Ano *</label><select id="df-ano"></select></div>
+      <div class="fg"><label>Mês *</label><select id="df-mes" onchange="despRecUpdatePreview('df')"></select></div>
+      <div class="fg"><label>Ano *</label><select id="df-ano" onchange="despRecUpdatePreview('df')"></select></div>
       <div class="fg s2">
         <label>Recorrência</label>
         <label class="toggle-row" for="df-rec">
-          <span class="toggle-lbl">🔁 Despesa recorrente — repete automaticamente todo mês</span>
-          <span class="tgl"><input type="checkbox" id="df-rec"><span class="tgl-track"></span></span>
+          <span class="toggle-lbl">🔁 Despesa recorrente — repete todo mês</span>
+          <span class="tgl"><input type="checkbox" id="df-rec" onchange="despRecToggle('df')"><span class="tgl-track"></span></span>
         </label>
-        <div class="toggle-status" id="df-rec-status">Ativado: esta despesa será duplicada para os próximos meses</div>
+        <div id="df-rec-opts" style="display:none;margin-top:.65rem;padding:.7rem .9rem;background:var(--danger-l);border:1px solid #fca5a5;border-radius:var(--r-sm)">
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.45rem">
+            <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Número de parcelas:</label>
+            <select id="df-nmes" onchange="despRecUpdatePreview('df')" style="font-size:.82rem;flex:1">
+              <option value="ano">Restante do ano (até Dez)</option>
+              <option value="3">3 meses</option>
+              <option value="6">6 meses</option>
+              <option value="12" selected>12 meses</option>
+              <option value="24">24 meses</option>
+            </select>
+          </div>
+          <div id="df-rec-preview" style="font-size:.77rem;color:var(--danger-d);font-weight:600"></div>
+        </div>
       </div>
       <div class="fg s2"><label>Observações</label><textarea id="df-obs"></textarea></div>
     </div>
@@ -818,16 +830,28 @@ body.auth-locked .auth-screen{display:flex}
       <div class="fg"><label>Data</label><input type="date" id="dv-data"></div>
       <div class="fg"><label>Pessoa</label><select id="dv-pessoa"><option value="p1">Pessoa 1</option><option value="p2">Pessoa 2</option><option value="ambos">Ambos</option></select></div>
       <div class="fg"><label>Forma de Pagamento</label><select id="dv-fp"><option value="pix">Pix</option><option value="debito">Débito</option><option value="credito">Cartão de Crédito</option><option value="boleto">Boleto</option><option value="dinheiro">Dinheiro</option><option value="outro">Outro</option></select></div>
-      <div class="fg"><label>Mês *</label><select id="dv-mes"></select></div>
-      <div class="fg"><label>Ano *</label><select id="dv-ano"></select></div>
+      <div class="fg"><label>Mês *</label><select id="dv-mes" onchange="despRecUpdatePreview('dv')"></select></div>
+      <div class="fg"><label>Ano *</label><select id="dv-ano" onchange="despRecUpdatePreview('dv')"></select></div>
       <div class="fg"><label>Status</label><select id="dv-status"><option value="pago">Pago</option><option value="pendente">Pendente</option><option value="atrasado">Atrasado</option></select></div>
       <div class="fg s2">
         <label>Recorrência</label>
         <label class="toggle-row" for="dv-rec">
           <span class="toggle-lbl">🔁 Despesa recorrente — ocorre todo mês (valor pode variar)</span>
-          <span class="tgl"><input type="checkbox" id="dv-rec"><span class="tgl-track"></span></span>
+          <span class="tgl"><input type="checkbox" id="dv-rec" onchange="despRecToggle('dv')"><span class="tgl-track"></span></span>
         </label>
-        <div class="toggle-status" id="dv-rec-status" style="color:var(--text3)">Desativado: despesa pontual / única</div>
+        <div id="dv-rec-opts" style="display:none;margin-top:.65rem;padding:.7rem .9rem;background:var(--warning-l);border:1px solid #fde68a;border-radius:var(--r-sm)">
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.45rem">
+            <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Número de parcelas:</label>
+            <select id="dv-nmes" onchange="despRecUpdatePreview('dv')" style="font-size:.82rem;flex:1">
+              <option value="ano">Restante do ano (até Dez)</option>
+              <option value="3">3 meses</option>
+              <option value="6">6 meses</option>
+              <option value="12" selected>12 meses</option>
+              <option value="24">24 meses</option>
+            </select>
+          </div>
+          <div id="dv-rec-preview" style="font-size:.77rem;color:var(--warning-d);font-weight:600"></div>
+        </div>
       </div>
       <div class="fg s2"><label>Observações</label><textarea id="dv-obs"></textarea></div>
     </div>
@@ -1784,14 +1808,13 @@ function openMDF(item){
   document.getElementById('df-fp').value=item?.formaPagamento||'pix';
   document.getElementById('df-status').value=item?.status||'pendente';
   document.getElementById('df-obs').value=item?.obs||'';
-  // Toggle recorrente (padrão: SIM para despesas fixas)
-  const isRec = item ? item.recorrente !== 'nao' : true;
-  document.getElementById('df-rec').checked = isRec;
-  updateToggleStatus('df-rec', 'df-rec-status',
-    'Ativado: esta despesa será duplicada para os próximos meses',
-    'Desativado: despesa única / não recorrente');
+  const isRec=item?item.recorrente!=='nao':true;
+  document.getElementById('df-rec').checked=isRec;
+  const isNew=!item?.id;
+  document.getElementById('df-rec-opts').style.display=isRec&&isNew?'block':'none';
   fillCat('df-cat');if(item?.categoria)document.getElementById('df-cat').value=item.categoria;
   fillMA('df-mes','df-ano',item?.mes,item?.ano);
+  despRecUpdatePreview('df');
   openM('mod-df');
 }
 function editDF(id){openMDF(APP.despesasFixas.find(d=>d.id===id))}
@@ -1800,8 +1823,19 @@ function saveDF(){
   if(!desc){toast('Preencha a descrição','error');return}
   if(!parseBRL(val)){toast('Informe um valor','error');return}
   const id=V('df-id');
-  const d={id:id||gid(),descricao:desc,categoria:V('df-cat'),valor:val,diaVencimento:V('df-dia'),pessoa:V('df-pessoa'),formaPagamento:V('df-fp'),recorrente:document.getElementById('df-rec').checked?'sim':'nao',status:V('df-status'),mes:V('df-mes'),ano:V('df-ano'),obs:V('df-obs')};
-  upsert('despesasFixas',d,id);save();closeM('mod-df');toast('Despesa fixa salva!','success');renderFixas();
+  const isRec=document.getElementById('df-rec').checked;
+  const isNew=!id;
+  if(isNew&&isRec){
+    const grupoId=gid();
+    const meses=despRecGetMeses('df');
+    meses.forEach(({m,a})=>{
+      APP.despesasFixas.push({id:gid(),descricao:desc,categoria:V('df-cat'),valor:val,diaVencimento:V('df-dia'),pessoa:V('df-pessoa'),formaPagamento:V('df-fp'),recorrente:'sim',recGrupoId:grupoId,status:V('df-status'),mes:m,ano:a,obs:V('df-obs')});
+    });
+    save();closeM('mod-df');toast(`🔁 ${meses.length} despesa(s) fixa(s) criada(s)!`,'success',4000);renderFixas();
+  }else{
+    const d={id:id||gid(),descricao:desc,categoria:V('df-cat'),valor:val,diaVencimento:V('df-dia'),pessoa:V('df-pessoa'),formaPagamento:V('df-fp'),recorrente:isRec?'sim':'nao',status:V('df-status'),mes:V('df-mes'),ano:V('df-ano'),obs:V('df-obs')};
+    upsert('despesasFixas',d,id);save();closeM('mod-df');toast('Despesa fixa salva!','success');renderFixas();
+  }
 }
 function dupFixas(){
   const items=APP.despesasFixas.filter(d=>+d.mes===cM&&+d.ano===cA&&d.recorrente==='sim');
@@ -1839,14 +1873,13 @@ function openMDV(item){
   document.getElementById('dv-fp').value=item?.formaPagamento||'pix';
   document.getElementById('dv-status').value=item?.status||'pago';
   document.getElementById('dv-obs').value=item?.obs||'';
-  // Toggle recorrente (padrão: NÃO para despesas variáveis)
-  const isRec = item?.recorrente === 'sim';
-  document.getElementById('dv-rec').checked = isRec;
-  updateToggleStatus('dv-rec', 'dv-rec-status',
-    'Ativado: despesa recorrente — ocorre todo mês',
-    'Desativado: despesa pontual / única');
+  const isRec=item?.recorrente==='sim';
+  document.getElementById('dv-rec').checked=isRec;
+  const isNew=!item?.id;
+  document.getElementById('dv-rec-opts').style.display=isRec&&isNew?'block':'none';
   fillCat('dv-cat');if(item?.categoria)document.getElementById('dv-cat').value=item.categoria;
   fillMA('dv-mes','dv-ano',item?.mes,item?.ano);
+  despRecUpdatePreview('dv');
   openM('mod-dv');
 }
 function editDV(id){openMDV(APP.despesasVariaveis.find(d=>d.id===id))}
@@ -1855,8 +1888,19 @@ function saveDV(){
   if(!desc){toast('Preencha a descrição','error');return}
   if(!parseBRL(val)){toast('Informe um valor','error');return}
   const id=V('dv-id');
-  const d={id:id||gid(),descricao:desc,categoria:V('dv-cat'),valor:val,data:V('dv-data'),pessoa:V('dv-pessoa'),formaPagamento:V('dv-fp'),status:V('dv-status'),recorrente:document.getElementById('dv-rec').checked?'sim':'nao',mes:V('dv-mes'),ano:V('dv-ano'),obs:V('dv-obs')};
-  upsert('despesasVariaveis',d,id);save();closeM('mod-dv');toast('Despesa variável salva!','success');renderVars();
+  const isRec=document.getElementById('dv-rec').checked;
+  const isNew=!id;
+  if(isNew&&isRec){
+    const grupoId=gid();
+    const meses=despRecGetMeses('dv');
+    meses.forEach(({m,a})=>{
+      APP.despesasVariaveis.push({id:gid(),descricao:desc,categoria:V('dv-cat'),valor:val,data:V('dv-data'),pessoa:V('dv-pessoa'),formaPagamento:V('dv-fp'),status:V('dv-status'),recorrente:'sim',recGrupoId:grupoId,mes:m,ano:a,obs:V('dv-obs')});
+    });
+    save();closeM('mod-dv');toast(`🔁 ${meses.length} despesa(s) criada(s)!`,'success',4000);renderVars();
+  }else{
+    const d={id:id||gid(),descricao:desc,categoria:V('dv-cat'),valor:val,data:V('dv-data'),pessoa:V('dv-pessoa'),formaPagamento:V('dv-fp'),status:V('dv-status'),recorrente:isRec?'sim':'nao',mes:V('dv-mes'),ano:V('dv-ano'),obs:V('dv-obs')};
+    upsert('despesasVariaveis',d,id);save();closeM('mod-dv');toast('Despesa variável salva!','success');renderVars();
+  }
 }
 
 // ═══ CARTÕES ═══
@@ -2732,6 +2776,28 @@ const SPREADSHEET_ID_DISPLAY='16KnYNyD8...R84g';
 function exportJSON(){const b=new Blob([JSON.stringify(APP,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financas_${new Date().toISOString().split('T')[0]}.json`;a.click();toast('Dados exportados!','success')}
 function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{APP={...APP,...JSON.parse(e.target.result)};if(!APP.importacoesCartao)APP.importacoesCartao=[];save();updatePersonUI();syncAuthNamesFromConfig();toast('Dados importados!','success');render(cMod);}catch{toast('Arquivo JSON inválido','error');}};r.readAsText(f)}
 function clearAll(){if(!confirm('ATENÇÃO: Isso apagará TODOS os dados. Continuar?'))return;const cfg={...APP.config};APP={config:cfg,receitas:[],investimentos:[],contas:[],despesasFixas:[],despesasVariaveis:[],cartoes:[],comprasCartao:[],parcelas:[],tarefas:[],desejos:[],importacoesCartao:[]};save();toast('Dados apagados','warning');render(cMod)}
+
+// ═══ RECORRÊNCIA DESPESAS HELPER ═══
+function despRecToggle(p){
+  const ck=document.getElementById(`${p}-rec`);
+  const isNew=!document.getElementById(`${p}-id`).value;
+  document.getElementById(`${p}-rec-opts`).style.display=ck.checked&&isNew?'block':'none';
+  if(ck.checked&&isNew)despRecUpdatePreview(p);
+}
+function despRecGetMeses(p){
+  const mes=+V(`${p}-mes`),ano=+V(`${p}-ano`);
+  const nVal=V(`${p}-nmes`);
+  const n=nVal==='ano'?Math.max(1,13-mes):+nVal||12;
+  return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
+}
+function despRecUpdatePreview(p){
+  const opts=document.getElementById(`${p}-rec-opts`);
+  if(!opts||opts.style.display==='none')return;
+  const meses=despRecGetMeses(p);
+  const labels=meses.map(({m,a})=>`${MONTHS[m-1].slice(0,3)}/${String(a).slice(2)}`);
+  const prev=document.getElementById(`${p}-rec-preview`);
+  if(prev)prev.textContent=`📅 ${meses.length} entrada(s): ${labels.join(' · ')}`;
+}
 
 // ═══ TOGGLE HELPER ═══
 function updateToggleStatus(checkId, statusId, onMsg, offMsg) {
