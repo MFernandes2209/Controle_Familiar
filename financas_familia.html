@@ -243,6 +243,10 @@ hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
 .row-caret{width:14px;display:inline-flex;justify-content:center;color:var(--text3);transition:transform var(--t)}
 .row-caret.closed{transform:rotate(-90deg)}
 .cell-row{display:inline-flex;align-items:center;gap:.25rem}
+.tbl-month-btn{padding:.2rem .45rem;font-size:.72rem;border:1px solid var(--border2);border-radius:var(--r-sm);cursor:pointer;background:var(--card);color:var(--text2);font-weight:500;transition:all var(--t);line-height:1.4}
+.tbl-month-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600}
+.tbl-month-picker-row{display:none;align-items:center;gap:.3rem;flex-wrap:wrap;padding:.4rem .6rem .35rem;background:var(--card);border-bottom:1px solid var(--border);margin-bottom:.75rem}
+.badge-fim{font-size:.58rem;background:#fef9c3;color:#854d0e;border:1px solid #fde047;border-radius:3px;padding:0 .22rem;margin-left:.22rem;font-weight:700;vertical-align:middle;white-space:nowrap}
 .cell-val{font-size:.79rem;font-weight:500}
 
 /* ── PROGRESS RING ── */
@@ -524,10 +528,11 @@ body.auth-locked .auth-screen{display:flex}
     </div>
   </div>
   <div class="fbar">
-    <select id="tbl-view" onchange="renderTabela()"><option value="mensal">Mensal</option><option value="anual">Anual (12 meses)</option></select>
+    <select id="tbl-view" onchange="onTblViewChange()"><option value="mensal">Mensal</option><option value="anual">Anual (12 meses)</option><option value="custom">Personalizado</option></select>
     <select id="tbl-cat" onchange="renderTabela()"><option value="">Todas as categorias</option></select>
     <input type="search" placeholder="Buscar..." id="tbl-q" oninput="renderTabela()">
   </div>
+  <div class="tbl-month-picker-row" id="tbl-month-picker"></div>
   <div class="tw"><table class="tbl-monthly" id="tblMain">
     <thead id="tblHead"></thead><tbody id="tblBody"></tbody><tfoot id="tblFoot"></tfoot>
   </table></div>
@@ -863,7 +868,7 @@ body.auth-locked .auth-screen{display:flex}
       <div class="fg s2"><label>Descrição *</label><input type="text" id="dv-desc" placeholder="Ex: Mercado, Farmácia, Combustível..."></div>
       <div class="fg"><label>Categoria *</label><select id="dv-cat"></select></div>
       <div class="fg"><label>Valor (R$) *</label><input type="text" id="dv-valor" placeholder="0,00" oninput="mask(this)"></div>
-      <div class="fg"><label>Data</label><input type="date" id="dv-data"></div>
+      <div class="fg"><label>Data</label><input type="date" id="dv-data" oninput="syncDvMesAno()"></div>
       <div class="fg"><label>Pessoa</label><select id="dv-pessoa"><option value="p1">Pessoa 1</option><option value="p2">Pessoa 2</option><option value="ambos">Ambos</option></select></div>
       <div class="fg"><label>Forma de Pagamento</label><select id="dv-fp"><option value="pix">Pix</option><option value="debito">Débito</option><option value="credito">Cartão de Crédito</option><option value="boleto">Boleto</option><option value="dinheiro">Dinheiro</option><option value="outro">Outro</option></select></div>
       <div class="fg"><label>Mês *</label><select id="dv-mes" onchange="despRecUpdatePreview('dv')"></select></div>
@@ -1669,6 +1674,37 @@ function addItemTotals(t,item,meses){
   meses.forEach(m=>{if(+item.mes===m&&+item.ano===cA)t[m]+=parseBRL(item.valor)})
 }
 function sumTotals(t){return Object.values(t).reduce((a,b)=>a+b,0)}
+// Soma totais para item \u00fanico ou grupo recorrente
+function addT(t,d,meses){
+  if(d._recGrupoId)d._items.forEach(x=>addItemTotals(t,x,meses));
+  else addItemTotals(t,d,meses);
+}
+function onTblViewChange(){
+  const mode=document.getElementById('tbl-view').value;
+  const picker=document.getElementById('tbl-month-picker');
+  if(picker){
+    if(mode==='custom'){
+      if(!picker._init){
+        picker._init=true;
+        picker.innerHTML='<span style="font-size:.75rem;color:var(--text2);white-space:nowrap;margin-right:.2rem">Meses:</span>'+
+          MONTHS.map((nm,i)=>`<button class="tbl-month-btn${(i+1===cM)?' active':''}" onclick="tblMonthToggle(this)" data-m="${i+1}">${nm.slice(0,3)}</button>`).join('');
+      }
+      picker.style.display='flex';
+    }else{
+      picker.style.display='none';
+    }
+  }
+  renderTabela();
+}
+function tblMonthToggle(btn){btn.classList.toggle('active');renderTabela()}
+function tblGetMeses(mode){
+  if(mode==='anual')return MONTHS.map((_,i)=>i+1);
+  if(mode==='custom'){
+    const active=[...document.querySelectorAll('.tbl-month-btn.active')].map(b=>+b.dataset.m).sort((a,b)=>a-b);
+    return active.length?active:[cM];
+  }
+  return[cM];
+}
 function totalCells(t,meses,cls=''){return meses.map(m=>`<td class="m-cell tr fw6 ${cls}">${t[m]>0?brl(t[m]):'—'}</td>`).join('')}
 function groupLabel(icon,label,open,indent=.7){
   return `<span class="row-toggle" style="padding-left:${indent}rem"><span class="row-caret ${open?'':'closed'}">▾</span><span>${icon} ${label}</span></span>`
@@ -1678,20 +1714,20 @@ function renderTabela(){
   const mode=document.getElementById('tbl-view').value;
   const catF=document.getElementById('tbl-cat').value;
   const q=document.getElementById('tbl-q').value.toLowerCase();
-  const meses=mode==='anual'?MONTHS.map((_,i)=>i+1):[cM];
+  const meses=tblGetMeses(mode);
   const fullCols=4+meses.length+1;
 
   // Fill cat filter
   const catSel=document.getElementById('tbl-cat');const curCat=catSel.value;
   catSel.innerHTML='<option value="">Todas as categorias</option>'+APP.config.cats.map(c=>`<option value="${c}" ${c===curCat?'selected':''}>${c}</option>`).join('');
 
-  const colLabel=(m)=>mode==='anual'?MONTHS[m-1].slice(0,3):`${MONTHS[m-1]} ${cA}`;
-  // Head
+  const colLabel=(m)=>(mode==='anual'||mode==='custom')?MONTHS[m-1].slice(0,3):`${MONTHS[m-1]} ${cA}`;
   document.getElementById('tblHead').innerHTML=`<tr>
     <th style="min-width:140px">Categoria / Descrição</th><th>Responsável</th><th>Venc.</th><th>Pagamento</th>
     ${meses.map(m=>`<th class="m-col">${colLabel(m)}</th>`).join('')}<th class="tr">Total</th></tr>`;
 
-  const allItems=[
+  // ── Coleta todos os itens sem filtro de mês, aplica cat/busca ──
+  const rawItems=[
     ...APP.despesasFixas.map(d=>({...d,_t:'df'})),
     ...APP.despesasVariaveis.map(d=>({...d,_t:'dv'})),
     ...APP.parcelas.map(p=>{
@@ -1700,73 +1736,134 @@ function renderTabela(){
       return{...p,_t:'parc',categoria:'Cartão de Crédito',
         descricao:`${p.descricao} (${p.parcelaAtual}/${p.totalParcelas})`,
         valor:p.valorParcela,formaPagamento:'credito',
-        diaVencimento:dv,
-        _cartaoId:p.cartaoId||'sem-cartao',
-        _cartao:cart?cart.nome:''
+        diaVencimento:dv,_cartaoId:p.cartaoId||'sem-cartao',_cartao:cart?cart.nome:''
       };
     })
   ].filter(d=>{
-    const inAny=mode==='anual'?meses.some(m=>+d.mes===m&&+d.ano===cA):+d.mes===cM&&+d.ano===cA;
-    if(!inAny)return false;
     if(catF&&d.categoria!==catF)return false;
     const name=`${d.descricao||d.nome||''} ${d._cartao||''}`.toLowerCase();
     if(q&&!name.includes(q))return false;
     return true;
   });
 
-  const cats={};allItems.forEach(d=>{const c=d.categoria||'Outros';if(!cats[c])cats[c]=[];cats[c].push(d)});
-  const recTotals=blankTotals(meses);meses.forEach(m=>{recTotals[m]=APP.receitas.filter(r=>+r.mes===m&&+r.ano===cA).reduce((s,r)=>s+parseBRL(r.valor),0)});
+  // ── Agrupa itens recorrentes por recGrupoId ──
+  const recGroups={};const singles=[];
+  rawItems.forEach(d=>{
+    if(d.recorrente==='sim'&&d.recGrupoId){
+      if(!recGroups[d.recGrupoId])recGroups[d.recGrupoId]={...d,_recGrupoId:d.recGrupoId,_items:[]};
+      recGroups[d.recGrupoId]._items.push(d);
+    }else{
+      if(meses.some(m=>+d.mes===m&&+d.ano===cA))singles.push(d);
+    }
+  });
 
-  // Pre-compute expense totals (paid vs pending)
-  const grandT=blankTotals(meses);
-  const pagoT=blankTotals(meses);
-  const pendT=blankTotals(meses);
+  // Mantém grupos que têm pelo menos 1 item no período visível;
+  // calcula _lastMesAno com todos os itens do grupo (não só os visíveis)
+  const groupItems=Object.values(recGroups).map(g=>{
+    if(!g._items.some(x=>meses.some(m=>+x.mes===m&&+x.ano===cA)))return null;
+    const last=g._items.reduce((mx,x)=>(+x.ano*12+ +x.mes)>(+mx.ano*12+ +mx.mes)?x:mx,g._items[0]);
+    return{...g,_lastMesAno:{m:+last.mes,a:+last.ano}};
+  }).filter(Boolean);
+
+  const allItems=[...groupItems,...singles];
+  const cats={};allItems.forEach(d=>{const c=d.categoria||'Outros';if(!cats[c])cats[c]=[];cats[c].push(d)});
+
+  // Totais de receitas
+  const recTotals=blankTotals(meses);
+  meses.forEach(m=>{recTotals[m]=APP.receitas.filter(r=>+r.mes===m&&+r.ano===cA).reduce((s,r)=>s+parseBRL(r.valor),0)});
+
+  // Totais de despesas (usando addT que expande grupos)
+  const grandT=blankTotals(meses);const pagoT=blankTotals(meses);const pendT=blankTotals(meses);
   allItems.forEach(d=>{
-    addItemTotals(grandT,d,meses);
-    if(d.status==='pago')addItemTotals(pagoT,d,meses);
-    else addItemTotals(pendT,d,meses);
+    addT(grandT,d,meses);
+    const flat=d._recGrupoId?d._items.filter(x=>meses.some(m=>+x.mes===m&&+x.ano===cA)):[d];
+    flat.forEach(x=>{if(x.status==='pago')addItemTotals(pagoT,x,meses);else addItemTotals(pendT,x,meses);});
   });
 
   const renderItemRow=(d,indent=1.4)=>{
+    const isGroup=!!d._recGrupoId;
     const name=d.descricao||'—';
-    const iT=blankTotals(meses);addItemTotals(iT,d,meses);
-    const rc=d.status==='pago'?'tr-pago':d.status==='atrasado'?'tr-atrasado':'';
+    const recBadge=isGroup?'<span style="font-size:.6rem;opacity:.55;margin-left:.2rem">🔁</span>':'';
     const venc=d.diaVencimento?`Dia ${d.diaVencimento}`:d.vencimento?fmtDate(d.vencimento):'—';
     const fp=FP_LABELS[d.formaPagamento]||'—';
-    return `<tr class="${rc}"><td style="padding-left:${indent}rem;font-size:.82rem">${name}</td><td>${d.pessoa?bdgPessoa(d.pessoa):'—'}</td><td style="font-size:.78rem">${venc}</td><td style="font-size:.78rem">${fp}</td>
-      ${meses.map(m=>{if(!iT[m])return'<td class="m-cell text-muted">—</td>';const ck=d.status==='pago'?'checked':'';return`<td class="m-cell"><div class="cell-row"><input type="checkbox" ${ck} onchange="tglStatus('${d._t}','${d.id}',this.checked)" title="Marcar pago"><span class="cell-val">${brl(iT[m])}</span></div></td>`;}).join('')}
-      <td class="tr fw6">${brl(sumTotals(iT))}</td></tr>`;
+    let rowTotal=0;
+    const cells=meses.map(m=>{
+      if(isGroup){
+        const item=d._items.find(x=>+x.mes===m&&+x.ano===cA);
+        if(!item)return'<td class="m-cell text-muted">—</td>';
+        rowTotal+=parseBRL(item.valor);
+        const isLast=+d._lastMesAno.m===m&&+d._lastMesAno.a===cA;
+        const ck=item.status==='pago'?'checked':'';
+        const lastBadge=isLast?'<span class="badge-fim" title="Última parcela desta série">FIM</span>':'';
+        return`<td class="m-cell"><div class="cell-row"><input type="checkbox" ${ck} onchange="tglStatus('${d._t}','${item.id}',this.checked)" title="Marcar pago"><span class="cell-val">${brl(parseBRL(item.valor))}${lastBadge}</span></div></td>`;
+      }else{
+        const iT=blankTotals([m]);addItemTotals(iT,d,[m]);
+        if(!iT[m])return'<td class="m-cell text-muted">—</td>';
+        rowTotal+=iT[m];
+        const ck=d.status==='pago'?'checked':'';
+        return`<td class="m-cell"><div class="cell-row"><input type="checkbox" ${ck} onchange="tglStatus('${d._t}','${d.id}',this.checked)" title="Marcar pago"><span class="cell-val">${brl(iT[m])}</span></div></td>`;
+      }
+    });
+    const rc=isGroup?'':(d.status==='pago'?'tr-pago':d.status==='atrasado'?'tr-atrasado':'');
+    return`<tr class="${rc}"><td style="padding-left:${indent}rem;font-size:.82rem">${name}${recBadge}</td><td>${d.pessoa?bdgPessoa(d.pessoa):'—'}</td><td style="font-size:.78rem">${venc}</td><td style="font-size:.78rem">${fp}</td>${cells.join('')}<td class="tr fw6">${rowTotal>0?brl(rowTotal):'—'}</td></tr>`;
   };
 
-  // RECEITAS — expandível para mostrar detalhes abaixo
-  const recKey='rec-group';
-  const recOpen=tblIsOpen(recKey);
+  // ── RECEITAS — agrupa recorrentes em uma linha ──
+  const recKey='rec-group';const recOpen=tblIsOpen(recKey);
   let html=`<tr class="tr-cat tr-toggle" onclick="toggleTblGroup('${recKey}')"><td colspan="4">${groupLabel('💰','RECEITAS',recOpen)}</td>${meses.map(m=>`<td class="m-cell tr fw6 text-green">${recTotals[m]>0?brl(recTotals[m]):'—'}</td>`).join('')}<td class="tr fw7 text-green">${brl(sumTotals(recTotals))}</td></tr>`;
-
   if(recOpen){
-    const recItems=APP.receitas.filter(r=>mode==='anual'?meses.some(m=>+r.mes===m&&+r.ano===cA):+r.mes===cM&&+r.ano===cA);
+    const rGroups={};const rSingles=[];
+    // Usa TODAS as receitas para encontrar o último item de cada grupo
+    APP.receitas.forEach(r=>{
+      if(r.recorrente==='sim'&&r.recGrupoId){
+        if(!rGroups[r.recGrupoId])rGroups[r.recGrupoId]={...r,_recGrupoId:r.recGrupoId,_items:[],_allItems:[]};
+        rGroups[r.recGrupoId]._allItems.push(r);
+        if(meses.some(m=>+r.mes===m&&+r.ano===cA))rGroups[r.recGrupoId]._items.push(r);
+      }else if(meses.some(m=>+r.mes===m&&+r.ano===cA)){
+        rSingles.push(r);
+      }
+    });
+    const rGroupItems=Object.values(rGroups).filter(g=>g._items.length).map(g=>{
+      const last=g._allItems.reduce((mx,x)=>(+x.ano*12+ +x.mes)>(+mx.ano*12+ +mx.mes)?x:mx,g._allItems[0]);
+      return{...g,_lastMesAno:{m:+last.mes,a:+last.ano}};
+    });
+    const recItems=[...rGroupItems,...rSingles];
     if(recItems.length){
       recItems.forEach(r=>{
-        const rT=blankTotals(meses);meses.forEach(m=>{if(+r.mes===m&&+r.ano===cA)rT[m]+=parseBRL(r.valor)});
-        html+=`<tr><td style="padding-left:1.4rem;font-size:.82rem">${r.descricao||(TIPO_REC_LABELS[r.tipo]||r.tipo)||'—'}</td><td>${r.pessoa?bdgPessoa(r.pessoa):'—'}</td><td style="font-size:.78rem">${r.data?fmtDate(r.data):'—'}</td><td>—</td>${meses.map(m=>`<td class="m-cell">${rT[m]>0?`<span class="cell-val text-green">${brl(rT[m])}</span>`:'—'}</td>`).join('')}<td class="tr fw6 text-green">${brl(sumTotals(rT))}</td></tr>`;
+        const isG=!!r._recGrupoId;
+        const recBadge=isG?'<span style="font-size:.6rem;opacity:.55;margin-left:.2rem">🔁</span>':'';
+        let rTotal=0;
+        const cells=meses.map(m=>{
+          if(isG){
+            const item=r._items.find(x=>+x.mes===m&&+x.ano===cA);
+            if(!item)return'<td class="m-cell">—</td>';
+            rTotal+=parseBRL(item.valor);
+            const isLast=+r._lastMesAno.m===m&&+r._lastMesAno.a===cA;
+            const lastBadge=isLast?'<span class="badge-fim" title="Última parcela desta série">FIM</span>':'';
+            return`<td class="m-cell"><span class="cell-val text-green">${brl(parseBRL(item.valor))}${lastBadge}</span></td>`;
+          }else{
+            if(+r.mes===m&&+r.ano===cA){rTotal+=parseBRL(r.valor);return`<td class="m-cell"><span class="cell-val text-green">${brl(parseBRL(r.valor))}</span></td>`;}
+            return'<td class="m-cell">—</td>';
+          }
+        });
+        const desc=r.descricao||(TIPO_REC_LABELS[r.tipo]||r.tipo)||'—';
+        const data=r.data?fmtDate(r.data):'—';
+        html+=`<tr><td style="padding-left:1.4rem;font-size:.82rem">${desc}${recBadge}</td><td>${r.pessoa?bdgPessoa(r.pessoa):'—'}</td><td style="font-size:.78rem">${data}</td><td>—</td>${cells.join('')}<td class="tr fw6 text-green">${brl(rTotal)}</td></tr>`;
       });
     }else{
       html+=`<tr><td colspan="${fullCols}" style="padding-left:1.4rem;font-size:.82rem;color:var(--text3)">Nenhuma receita neste período.</td></tr>`;
     }
   }
 
-  // TOTAL DESPESAS no corpo da tabela (detalhes das categorias aparecem abaixo)
   html+=`<tr class="tr-cat" style="background:#fef2f2"><td colspan="4" style="padding-left:.7rem"><strong style="color:var(--danger)">💸 TOTAL DESPESAS</strong></td>${meses.map(m=>`<td class="m-cell tr fw6 text-red">${grandT[m]>0?brl(grandT[m]):'—'}</td>`).join('')}<td class="tr fw7 text-red">${brl(sumTotals(grandT))}</td></tr>`;
 
   const catEntries=Object.entries(cats);
   catEntries.forEach(([cat,items])=>{
     const catT=blankTotals(meses);
-    items.forEach(d=>addItemTotals(catT,d,meses));
-    const catKey=tblKey('cat',cat);
-    const catOpen=tblIsOpen(catKey);
+    items.forEach(d=>addT(catT,d,meses));
+    const catKey=tblKey('cat',cat);const catOpen=tblIsOpen(catKey);
     html+=`<tr class="tr-cat tr-toggle" onclick="toggleTblGroup('${catKey}')"><td colspan="4">${groupLabel('📁',cat,catOpen)}</td>${totalCells(catT,meses)}<td class="tr fw7">${brl(sumTotals(catT))}</td></tr>`;
     if(!catOpen)return;
-
     if(cat==='Cartão de Crédito'){
       const cards={};
       items.forEach(d=>{
@@ -1776,14 +1873,12 @@ function renderTabela(){
       });
       Object.entries(cards).sort((a,b)=>a[1].nome.localeCompare(b[1].nome,'pt-BR')).forEach(([id,grp])=>{
         const cardT=blankTotals(meses);
-        grp.items.forEach(d=>addItemTotals(cardT,d,meses));
-        const cardKey=tblKey('card',id);
-        const cardOpen=tblIsOpen(cardKey);
+        grp.items.forEach(d=>addT(cardT,d,meses));
+        const cardKey=tblKey('card',id);const cardOpen=tblIsOpen(cardKey);
         const allPaid=grp.items.every(d=>d.status==='pago');
         const itemIds=grp.items.map(d=>`${d._t}:${d.id}`).join(',');
         const flagStyle=allPaid?'background:#dcfce7;color:#166534;border:1.5px solid #86efac':'background:#fef9c3;color:#854d0e;border:1.5px solid #fde047';
-        const flagIcon=allPaid?'✅':'🏳️';
-        const flagLabel=allPaid?'PAGO':'PENDENTE';
+        const flagIcon=allPaid?'✅':'🏳️';const flagLabel=allPaid?'PAGO':'PENDENTE';
         html+=`<tr class="tr-card tr-toggle" onclick="toggleTblGroup('${cardKey}')"><td colspan="4"><div style="display:flex;align-items:center;justify-content:space-between;padding-right:.5rem">${groupLabel('💳',grp.nome,cardOpen,1.35)}<span onclick="tglCardPago(event,'${itemIds}',${!allPaid})" title="Clique para alternar status" style="font-size:.7rem;padding:.18rem .55rem;border-radius:1rem;cursor:pointer;font-weight:700;letter-spacing:.03em;user-select:none;${flagStyle}">${flagIcon} ${flagLabel}</span></div></td>${totalCells(cardT,meses)}<td class="tr fw7">${brl(sumTotals(cardT))}</td></tr>`;
         if(cardOpen)html+=grp.items.map(d=>renderItemRow(d,2.2)).join('');
       });
@@ -1795,10 +1890,8 @@ function renderTabela(){
   if(!catEntries.length)html+=`<tr><td colspan="${fullCols}"><div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma despesa neste período. Adicione contas ou despesas fixas.</div></div></td></tr>`;
   document.getElementById('tblBody').innerHTML=html;
 
-  const tRecTotal=sumTotals(recTotals);
-  const tDespTotal=sumTotals(grandT);
-  const tPago=sumTotals(pagoT);
-  const tPend=sumTotals(pendT);
+  const tRecTotal=sumTotals(recTotals);const tDespTotal=sumTotals(grandT);
+  const tPago=sumTotals(pagoT);const tPend=sumTotals(pendT);
   document.getElementById('tblFoot').innerHTML=`
     <tr style="background:#f0fdf4"><td colspan="4"><strong>✅ TOTAL PAGO</strong></td>${meses.map(m=>`<td class="m-cell tr fw7 text-green">${pagoT[m]>0?brl(pagoT[m]):'—'}</td>`).join('')}<td class="tr fw7 text-green">${brl(tPago)}</td></tr>
     <tr style="background:#fffbeb"><td colspan="4"><strong>⏳ A PAGAR</strong></td>${meses.map(m=>`<td class="m-cell tr fw7" style="color:#d97706">${pendT[m]>0?brl(pendT[m]):'—'}</td>`).join('')}<td class="tr fw7" style="color:#d97706">${brl(tPend)}</td></tr>
@@ -2018,7 +2111,8 @@ function openMDV(item){
   document.getElementById('dv-id').value=item?.id||'';
   document.getElementById('dv-desc').value=item?.descricao||'';
   document.getElementById('dv-valor').value=item?.valor||'';
-  document.getElementById('dv-data').value=toIsoDate(item?.data)||new Date().toISOString().split('T')[0];
+  const dvDateStr=toIsoDate(item?.data)||new Date().toISOString().split('T')[0];
+  document.getElementById('dv-data').value=dvDateStr;
   document.getElementById('dv-pessoa').value=item?.pessoa||'p1';
   document.getElementById('dv-fp').value=item?.formaPagamento||'pix';
   document.getElementById('dv-status').value=item?.status||'pago';
@@ -2028,9 +2122,17 @@ function openMDV(item){
   const isNew=!item?.id;
   document.getElementById('dv-rec-opts').style.display=isRec&&isNew?'block':'none';
   fillCat('dv-cat');if(item?.categoria)document.getElementById('dv-cat').value=item.categoria;
-  fillMA('dv-mes','dv-ano',item?.mes,item?.ano);
+  // Deriva mês/ano da data — fonte de verdade
+  const _dvD=new Date(dvDateStr+'T00:00');
+  fillMA('dv-mes','dv-ano',_dvD.getMonth()+1,_dvD.getFullYear());
   despRecUpdatePreview('dv');
   openM('mod-dv');
+}
+function syncDvMesAno(){
+  const v=document.getElementById('dv-data').value;
+  if(!v)return;
+  const d=new Date(v+'T00:00');
+  if(!isNaN(d))fillMA('dv-mes','dv-ano',d.getMonth()+1,d.getFullYear());
 }
 function editDV(id){openMDV(APP.despesasVariaveis.find(d=>d.id===id))}
 function saveDV(){
@@ -2048,7 +2150,10 @@ function saveDV(){
     });
     save();closeM('mod-dv');toast(`🔁 ${meses.length} despesa(s) criada(s)!`,'success',4000);renderVars();
   }else{
-    const d={id:id||gid(),descricao:desc,categoria:V('dv-cat'),valor:val,data:V('dv-data'),pessoa:V('dv-pessoa'),formaPagamento:V('dv-fp'),status:V('dv-status'),recorrente:isRec?'sim':'nao',mes:V('dv-mes'),ano:V('dv-ano'),obs:V('dv-obs')};
+    const _dvDt=new Date(V('dv-data')+'T00:00');
+    const _dvMes=isNaN(_dvDt)?+V('dv-mes'):_dvDt.getMonth()+1;
+    const _dvAno=isNaN(_dvDt)?+V('dv-ano'):_dvDt.getFullYear();
+    const d={id:id||gid(),descricao:desc,categoria:V('dv-cat'),valor:val,data:V('dv-data'),pessoa:V('dv-pessoa'),formaPagamento:V('dv-fp'),status:V('dv-status'),recorrente:isRec?'sim':'nao',mes:_dvMes,ano:_dvAno,obs:V('dv-obs')};
     upsert('despesasVariaveis',d,id);save();closeM('mod-dv');toast('Despesa variável salva!','success');renderVars();
   }
 }
@@ -3079,16 +3184,18 @@ async function loadFromGS(silent=false){
     const j=await r.json();
     if(j.success&&j.data){
       const d=j.data;
-      if(d.receitas&&d.receitas.length)        APP.receitas=d.receitas;
-      if(d.investimentos&&d.investimentos.length) APP.investimentos=d.investimentos;
-      if(d.despesasFixas&&d.despesasFixas.length) APP.despesasFixas=d.despesasFixas;
-      if(d.despesasVariaveis&&d.despesasVariaveis.length) APP.despesasVariaveis=d.despesasVariaveis;
-      if(d.cartoes&&d.cartoes.length)          APP.cartoes=d.cartoes;
-      if(d.comprasCartao&&d.comprasCartao.length) APP.comprasCartao=d.comprasCartao;
-      if(d.parcelas&&d.parcelas.length)        APP.parcelas=d.parcelas;
-      if(d.tarefas&&d.tarefas.length)          APP.tarefas=d.tarefas;
-      if(d.desejos&&d.desejos.length)          APP.desejos=d.desejos;
-      if(d.importacoesCartao&&d.importacoesCartao.length) APP.importacoesCartao=d.importacoesCartao;
+      // Mescla dados do GS preservando itens locais que ainda não foram sincronizados
+      const _arrays=['receitas','investimentos','despesasFixas','despesasVariaveis',
+                     'cartoes','comprasCartao','parcelas','tarefas','desejos','importacoesCartao'];
+      let _hasNewLocal=false;
+      _arrays.forEach(k=>{
+        const remote=d[k]||[];
+        if(!remote.length)return;
+        const remoteIds=new Set(remote.map(x=>x.id));
+        const localOnly=(APP[k]||[]).filter(x=>x.id&&!remoteIds.has(x.id));
+        if(localOnly.length)_hasNewLocal=true;
+        APP[k]=[...remote,...localOnly];
+      });
       if(d.config){
         if(d.config.p1)  APP.config.p1=d.config.p1;
         if(d.config.p2)  APP.config.p2=d.config.p2;
@@ -3100,6 +3207,7 @@ async function loadFromGS(silent=false){
       setSyncUI('ok','Sync: '+new Date().toLocaleTimeString('pt-BR'));
       if(!silent)toast('✅ Dados carregados do Google Sheets!','success');
       render(cMod);
+      if(_hasNewLocal)scheduleSyncToGS();
     } else throw new Error(j.error||'Sem dados na planilha');
   }catch(e){
     setSyncUI(navigator.onLine?'':'offline',navigator.onLine?'Erro GS':'Offline');
