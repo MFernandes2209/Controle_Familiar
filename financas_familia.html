@@ -783,8 +783,14 @@ body.auth-locked .auth-screen{display:flex}
               <option value="12" selected>12 meses</option>
               <option value="24">24 meses</option>
               <option value="custom">Personalizado...</option>
+              <option value="ate">Até mês/ano específico...</option>
             </select>
             <input type="number" id="rec-nmes-custom" min="1" max="120" placeholder="Qtd" oninput="recUpdatePreview()" style="display:none;width:70px;font-size:.82rem;padding:.25rem .4rem;border:1px solid var(--border2);border-radius:var(--r-sm)">
+          </div>
+          <div id="rec-ate-opts" style="display:none;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.45rem">
+            <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Até:</label>
+            <select id="rec-ate-mes" onchange="recUpdatePreview()" style="font-size:.82rem"></select>
+            <select id="rec-ate-ano" onchange="recUpdatePreview()" style="font-size:.82rem"></select>
           </div>
           <div id="rec-preview" style="font-size:.77rem;color:var(--success-d);font-weight:600"></div>
         </div>
@@ -847,8 +853,14 @@ body.auth-locked .auth-screen{display:flex}
               <option value="12" selected>12 meses</option>
               <option value="24">24 meses</option>
               <option value="custom">Personalizado...</option>
+              <option value="ate">Até mês/ano específico...</option>
             </select>
             <input type="number" id="df-nmes-custom" min="1" max="120" placeholder="Qtd" oninput="despRecUpdatePreview('df')" style="display:none;width:70px;font-size:.82rem;padding:.25rem .4rem;border:1px solid var(--border2);border-radius:var(--r-sm)">
+          </div>
+          <div id="df-ate-opts" style="display:none;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.45rem">
+            <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Até:</label>
+            <select id="df-ate-mes" onchange="despRecUpdatePreview('df')" style="font-size:.82rem"></select>
+            <select id="df-ate-ano" onchange="despRecUpdatePreview('df')" style="font-size:.82rem"></select>
           </div>
           <div id="df-rec-preview" style="font-size:.77rem;color:var(--danger-d);font-weight:600"></div>
         </div>
@@ -890,8 +902,14 @@ body.auth-locked .auth-screen{display:flex}
               <option value="12" selected>12 meses</option>
               <option value="24">24 meses</option>
               <option value="custom">Personalizado...</option>
+              <option value="ate">Até mês/ano específico...</option>
             </select>
             <input type="number" id="dv-nmes-custom" min="1" max="120" placeholder="Qtd" oninput="despRecUpdatePreview('dv')" style="display:none;width:70px;font-size:.82rem;padding:.25rem .4rem;border:1px solid var(--border2);border-radius:var(--r-sm)">
+          </div>
+          <div id="dv-ate-opts" style="display:none;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.45rem">
+            <label style="font-size:.82rem;color:var(--text2);white-space:nowrap">Até:</label>
+            <select id="dv-ate-mes" onchange="despRecUpdatePreview('dv')" style="font-size:.82rem"></select>
+            <select id="dv-ate-ano" onchange="despRecUpdatePreview('dv')" style="font-size:.82rem"></select>
           </div>
           <div id="dv-rec-preview" style="font-size:.77rem;color:var(--warning-d);font-weight:600"></div>
         </div>
@@ -1144,6 +1162,10 @@ let CARD_IMPORT={file:null,bank:'',rows:[],allRows:[],text:'',hash:'',finals:[],
 
 // ═══ PERSISTENCE ═══
 function save(){
+  if(currentUser&&!LOADING_FROM_GS){
+    APP.config.lastChange={by:currentUser.name,at:new Date().toISOString()};
+    updateLastChangeUI();
+  }
   try{localStorage.setItem('fin_app',JSON.stringify(APP));}catch(e){}
   scheduleSyncToGS();
 }
@@ -1270,14 +1292,18 @@ function startAuthSession(id){
   updateAuthSessionUI()
 }
 function updateAuthSessionUI(){
-  const sessionEl=document.getElementById('authSession');
   const cfgEl=document.getElementById('cfg-auth-user');
-  const name=currentUser?.name||'';
-  if(sessionEl){
-    sessionEl.textContent='';
-    if(name){sessionEl.append('Logado: ');const strong=document.createElement('strong');strong.textContent=name;sessionEl.appendChild(strong)}
-  }
-  if(cfgEl)cfgEl.textContent=name||'-'
+  if(cfgEl)cfgEl.textContent=currentUser?.name||'-';
+  updateLastChangeUI();
+}
+function updateLastChangeUI(){
+  const el=document.getElementById('authSession');
+  if(!el)return;
+  const lc=APP.config.lastChange;
+  if(!lc||!lc.at){el.textContent='';return;}
+  const d=new Date(lc.at);
+  const fmt=d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  el.innerHTML=`<span style="font-size:.75rem;color:var(--text2)">Últ. alt: <strong>${fmt}</strong> por <strong>${escHtml(lc.by)}</strong></span>`;
 }
 function unlockApp(shouldRender=true){
   document.body.classList.remove('auth-locked');
@@ -1440,8 +1466,9 @@ function toast(msg,type='',dur=3000){const c=document.getElementById('toasts');c
 function fillMA(mId,aId,sm,sa){
   const m=document.getElementById(mId),a=document.getElementById(aId);
   if(!m||!a)return;
-  m.innerHTML=MONTHS.map((n,i)=>`<option value="${i+1}" ${(sm||cM)===(i+1)?'selected':''}>${n}</option>`).join('');
-  a.innerHTML=[2023,2024,2025,2026,2027].map(y=>`<option value="${y}" ${(sa||cA)===y?'selected':''}>${y}</option>`).join('');
+  const nm=+(sm||cM),na=+(sa||cA);
+  m.innerHTML=MONTHS.map((n,i)=>`<option value="${i+1}" ${nm===(i+1)?'selected':''}>${n}</option>`).join('');
+  a.innerHTML=[2023,2024,2025,2026,2027,2028,2029,2030].map(y=>`<option value="${y}" ${na===y?'selected':''}>${y}</option>`).join('');
 }
 function fillCat(id){const el=document.getElementById(id);if(!el)return;el.innerHTML=APP.config.cats.map(c=>`<option value="${c}">${c}</option>`).join('')}
 function fillCartoes(id){const el=document.getElementById(id);if(!el)return;el.innerHTML=APP.cartoes.length?APP.cartoes.map(c=>`<option value="${c.id}">${c.nome}</option>`).join(''):'<option value="">—</option>'}
@@ -1957,6 +1984,12 @@ function recToggle(){
 function recGetMeses(){
   const mes=+V('rec-mes'),ano=+V('rec-ano');
   const nVal=nmesValue('rec');
+  if(nVal==='ate'){
+    const ateMes=+(document.getElementById('rec-ate-mes')?.value||12);
+    const ateAno=+(document.getElementById('rec-ate-ano')?.value||cA);
+    const n=Math.max(1,(ateAno-ano)*12+(ateMes-mes)+1);
+    return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
+  }
   const n=nVal==='ano'?Math.max(1,13-mes):+nVal||12;
   return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
 }
@@ -2056,7 +2089,9 @@ function openMDF(item){
   const isRec=item?item.recorrente!=='nao':true;
   document.getElementById('df-rec').checked=isRec;
   const isNew=!item?.id;
-  document.getElementById('df-rec-opts').style.display=isRec&&isNew?'block':'none';
+  document.getElementById('df-rec-opts').style.display=isRec?'block':'none';
+  if(isRec&&!isNew)preencherAteGrupo('df',APP.despesasFixas,item);
+  else if(isNew){document.getElementById('df-nmes').value='12';const ae=document.getElementById('df-ate-opts');if(ae)ae.style.display='none';}
   fillCat('df-cat');if(item?.categoria)document.getElementById('df-cat').value=item.categoria;
   fillMA('df-mes','df-ano',item?.mes,item?.ano);
   despRecUpdatePreview('df');
@@ -2079,7 +2114,15 @@ function saveDF(){
     save();closeM('mod-df');toast(`🔁 ${meses.length} despesa(s) fixa(s) criada(s)!`,'success',4000);renderFixas();
   }else{
     const d={id:id||gid(),descricao:desc,categoria:V('df-cat'),valor:val,diaVencimento:V('df-dia'),pessoa:V('df-pessoa'),formaPagamento:V('df-fp'),recorrente:isRec?'sim':'nao',status:V('df-status'),mes:V('df-mes'),ano:V('df-ano'),obs:V('df-obs')};
-    upsert('despesasFixas',d,id);save();closeM('mod-df');toast('Despesa fixa salva!','success');renderFixas();
+    upsert('despesasFixas',d,id);
+    let toastMsg='Despesa fixa salva!';
+    if(!isNew&&isRec&&nmesValue('df')==='ate'){
+      const ateMes=+(document.getElementById('df-ate-mes')?.value||12);
+      const ateAno=+(document.getElementById('df-ate-ano')?.value||cA);
+      const r=ajustarGrupo(APP.despesasFixas,d,ateMes,ateAno);
+      if(r.added>0||r.removed>0)toastMsg=`✅ Série atualizada: +${r.added} mês(es), -${r.removed} removido(s)`;
+    }
+    save();closeM('mod-df');toast(toastMsg,'success');renderFixas();
   }
 }
 function dupFixas(){
@@ -2119,12 +2162,14 @@ function openMDV(item){
   document.getElementById('dv-fp').value=item?.formaPagamento||'pix';
   document.getElementById('dv-status').value=item?.status||'pago';
   document.getElementById('dv-obs').value=item?.obs||'';
-  const isRec=item?.recorrente==='sim';
-  document.getElementById('dv-rec').checked=isRec;
   const isNew=!item?.id;
-  document.getElementById('dv-rec-opts').style.display=isRec&&isNew?'block':'none';
+  const isRec=item?item.recorrente==='sim':true;
+  document.getElementById('dv-rec').checked=isRec;
+  document.getElementById('dv-rec-opts').style.display=isRec?'block':'none';
+  if(isRec&&!isNew)preencherAteGrupo('dv',APP.despesasVariaveis,item);
+  else if(isNew){document.getElementById('dv-nmes').value='12';const ae=document.getElementById('dv-ate-opts');if(ae)ae.style.display='none';}
   fillCat('dv-cat');if(item?.categoria)document.getElementById('dv-cat').value=item.categoria;
-  // Deriva mês/ano da data — fonte de verdade
+  // Deriva mês/ano da data — fonte de verdade; preview só após fillMA
   const _dvD=new Date(dvDateStr+'T00:00');
   fillMA('dv-mes','dv-ano',_dvD.getMonth()+1,_dvD.getFullYear());
   despRecUpdatePreview('dv');
@@ -2132,6 +2177,7 @@ function openMDV(item){
 }
 // Extrai o dia de recebimento de uma receita (suporta campo novo 'dia' e legado 'data')
 function recDia(r){
+  if(!r)return'';
   if(r.dia)return +r.dia;
   if(r.data){const d=new Date((r.data.includes('-')?r.data+'T00:00':r.data));if(!isNaN(d))return d.getDate();}
   return'';
@@ -2162,7 +2208,15 @@ function saveDV(){
     const _dvMes=isNaN(_dvDt)?+V('dv-mes'):_dvDt.getMonth()+1;
     const _dvAno=isNaN(_dvDt)?+V('dv-ano'):_dvDt.getFullYear();
     const d={id:id||gid(),descricao:desc,categoria:V('dv-cat'),valor:val,data:V('dv-data'),pessoa:V('dv-pessoa'),formaPagamento:V('dv-fp'),status:V('dv-status'),recorrente:isRec?'sim':'nao',mes:_dvMes,ano:_dvAno,obs:V('dv-obs')};
-    upsert('despesasVariaveis',d,id);save();closeM('mod-dv');toast('Despesa variável salva!','success');renderVars();
+    upsert('despesasVariaveis',d,id);
+    let toastMsg='Despesa variável salva!';
+    if(!isNew&&isRec&&nmesValue('dv')==='ate'){
+      const ateMes=+(document.getElementById('dv-ate-mes')?.value||12);
+      const ateAno=+(document.getElementById('dv-ate-ano')?.value||cA);
+      const r=ajustarGrupo(APP.despesasVariaveis,d,ateMes,ateAno);
+      if(r.added>0||r.removed>0)toastMsg=`✅ Série atualizada: +${r.added} mês(es), -${r.removed} removido(s)`;
+    }
+    save();closeM('mod-dv');toast(toastMsg,'success');renderVars();
   }
 }
 
@@ -3211,7 +3265,7 @@ async function loadFromGS(silent=false){
       }
       LOADING_FROM_GS=true;save();LOADING_FROM_GS=false;
       sanitizeLoadedData();
-      updatePersonUI();syncAuthNamesFromConfig();
+      updatePersonUI();syncAuthNamesFromConfig();updateLastChangeUI();
       setSyncUI('ok','Sync: '+new Date().toLocaleTimeString('pt-BR'));
       if(!silent)toast('✅ Dados carregados do Google Sheets!','success');
       render(cMod);
@@ -3249,17 +3303,70 @@ function clearAll(){if(!confirm('ATENÇÃO: Isso apagará TODOS os dados. Contin
 // ═══ RECORRÊNCIA DESPESAS HELPER ═══
 function despRecToggle(p){
   const ck=document.getElementById(`${p}-rec`);
-  const isNew=!document.getElementById(`${p}-id`).value;
-  document.getElementById(`${p}-rec-opts`).style.display=ck.checked&&isNew?'block':'none';
-  if(ck.checked&&isNew)despRecUpdatePreview(p);
+  document.getElementById(`${p}-rec-opts`).style.display=ck.checked?'block':'none';
+  if(ck.checked)despRecUpdatePreview(p);
+}
+// Pré-preenche o seletor "até" com o último mês do grupo ao abrir para edição
+function preencherAteGrupo(p,arr,item){
+  const grupo=item.recGrupoId
+    ?arr.filter(x=>x.recGrupoId===item.recGrupoId)
+    :arr.filter(x=>x.recorrente==='sim'&&x.descricao===item.descricao&&x.pessoa===item.pessoa&&x.valor===item.valor);
+  if(!grupo.length)return;
+  const last=grupo.reduce((mx,x)=>(+x.ano*12+ +x.mes)>(+mx.ano*12+ +mx.mes)?x:mx,grupo[0]);
+  initAteOpts(p);
+  document.getElementById(`${p}-nmes`).value='ate';
+  const ateEl=document.getElementById(`${p}-ate-opts`);
+  if(ateEl)ateEl.style.display='flex';
+  const mesSel=document.getElementById(`${p}-ate-mes`);
+  const anoSel=document.getElementById(`${p}-ate-ano`);
+  if(mesSel)mesSel.value=+last.mes;
+  if(anoSel)anoSel.value=+last.ano;
+  despRecUpdatePreview(p);
+}
+// Ajusta a série: adiciona meses futuros até ateMes/ateAno e remove os não pagos além dele
+function ajustarGrupo(arr,item,ateMes,ateAno){
+  if(!item.recGrupoId)return{added:0,removed:0};
+  const gId=item.recGrupoId;
+  const endNum=+ateAno*12+ +ateMes;
+  let removed=0;
+  for(let i=arr.length-1;i>=0;i--){
+    const x=arr[i];
+    if(x.recGrupoId===gId&&(+x.ano*12+ +x.mes)>endNum&&x.status!=='pago'){arr.splice(i,1);removed++;}
+  }
+  const grupo=arr.filter(x=>x.recGrupoId===gId);
+  const last=grupo.length?grupo.reduce((mx,x)=>(+x.ano*12+ +x.mes)>(+mx.ano*12+ +mx.mes)?x:mx,grupo[0]):item;
+  let added=0;
+  let cur=addMonthsYM(+last.mes,+last.ano,1);
+  while(+cur.a*12+ +cur.m<=endNum){
+    if(!grupo.find(x=>+x.mes===cur.m&&+x.ano===cur.a)){
+      const novo={...item,id:gid(),mes:cur.m,ano:cur.a,status:'pendente',recGrupoId:gId,recorrente:'sim'};
+      arr.push(novo);grupo.push(novo);added++;
+    }
+    cur=addMonthsYM(cur.m,cur.a,1);
+  }
+  return{added,removed};
+}
+function initAteOpts(p){
+  const mes=document.getElementById(`${p}-ate-mes`);
+  const ano=document.getElementById(`${p}-ate-ano`);
+  if(!mes||!ano||mes._init)return;
+  mes._init=true;
+  mes.innerHTML=MONTHS.map((n,i)=>`<option value="${i+1}" ${(i+1)===12?'selected':''}>${n}</option>`).join('');
+  ano.innerHTML=[2025,2026,2027,2028,2029,2030].map(y=>`<option value="${y}" ${y===cA?'selected':''}>${y}</option>`).join('');
 }
 function onNmesChange(p){
   const sel=document.getElementById(`${p}-nmes`);
   const customEl=document.getElementById(`${p}-nmes-custom`);
+  const ateEl=document.getElementById(`${p}-ate-opts`);
   if(customEl){
     const isCustom=sel.value==='custom';
     customEl.style.display=isCustom?'inline-block':'none';
     if(isCustom&&!customEl.value)customEl.value='6';
+  }
+  if(ateEl){
+    const isAte=sel.value==='ate';
+    ateEl.style.display=isAte?'flex':'none';
+    if(isAte)initAteOpts(p);
   }
   if(p==='rec')recUpdatePreview();
   else despRecUpdatePreview(p);
@@ -3272,6 +3379,12 @@ function nmesValue(p){
 function despRecGetMeses(p){
   const mes=+V(`${p}-mes`),ano=+V(`${p}-ano`);
   const nVal=nmesValue(p);
+  if(nVal==='ate'){
+    const ateMes=+(document.getElementById(`${p}-ate-mes`)?.value||12);
+    const ateAno=+(document.getElementById(`${p}-ate-ano`)?.value||cA);
+    const n=Math.max(1,(ateAno-ano)*12+(ateMes-mes)+1);
+    return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
+  }
   const n=nVal==='ano'?Math.max(1,13-mes):+nVal||12;
   return Array.from({length:n},(_,i)=>addMonthsYM(mes,ano,i));
 }
