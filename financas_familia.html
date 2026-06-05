@@ -1137,7 +1137,7 @@ window.PDFJS_READY=import(PDFJS_URL).then(pdfjsLib=>{
 }).catch(err=>{
   console.error('Falha ao carregar PDF.js',err);
   window.pdfjsLib=null;
-  throw err;
+  return null;
 });
 </script>
 
@@ -1161,13 +1161,77 @@ let TBL_OPEN={};
 let CARD_IMPORT={file:null,bank:'',rows:[],allRows:[],text:'',hash:'',finals:[],selectedFinal:''};
 
 // ═══ PERSISTENCE ═══
-function save(){
-  if(currentUser&&!LOADING_FROM_GS){
+function persistLocal(){
+  try{localStorage.setItem('fin_app',JSON.stringify(APP));}catch(e){}
+}
+function save(opts={}){
+  const markChange=opts.markChange!==false;
+  const sync=opts.sync!==false;
+  if(markChange&&currentUser&&!LOADING_FROM_GS){
     APP.config.lastChange={by:currentUser.name,at:new Date().toISOString()};
     updateLastChangeUI();
   }
-  try{localStorage.setItem('fin_app',JSON.stringify(APP));}catch(e){}
-  scheduleSyncToGS();
+  persistLocal();
+  if(sync)scheduleSyncToGS();
+}
+function normalizeDeletedIds(src){
+  if(!src)return {};
+  if(typeof src==='string'){
+    try{src=JSON.parse(src)}catch(e){return {}}
+  }
+  const out={};
+  Object.entries(src||{}).forEach(([key,val])=>{
+    out[key]={};
+    if(Array.isArray(val)){
+      val.filter(Boolean).forEach(id=>{out[key][id]=true});
+    }else if(val&&typeof val==='object'){
+      Object.entries(val).forEach(([id,at])=>{if(id)out[key][id]=at||true});
+    }
+    if(!Object.keys(out[key]).length)delete out[key];
+  });
+  return out;
+}
+function mergeDeletedIds(a,b){
+  const out=normalizeDeletedIds(a);
+  const extra=normalizeDeletedIds(b);
+  Object.entries(extra).forEach(([key,ids])=>{
+    if(!out[key])out[key]={};
+    Object.entries(ids).forEach(([id,at])=>{out[key][id]=at});
+  });
+  return out;
+}
+function normalizeConfig(cfg){
+  const out={...(cfg||{})};
+  if(out.cats&&typeof out.cats==='string'){
+    try{out.cats=JSON.parse(out.cats)}catch(e){}
+  }
+  out.deletedIds=normalizeDeletedIds(out.deletedIds);
+  return out;
+}
+function ensureDeletedIds(){
+  APP.config=APP.config||{};
+  APP.config.deletedIds=normalizeDeletedIds(APP.config.deletedIds);
+  return APP.config.deletedIds;
+}
+function markDeleted(key,ids){
+  const arr=Array.isArray(ids)?ids:[ids];
+  const clean=arr.filter(Boolean);
+  if(!key||!clean.length)return;
+  const deleted=ensureDeletedIds();
+  if(!deleted[key])deleted[key]={};
+  const at=new Date().toISOString();
+  clean.forEach(id=>{deleted[key][id]=at});
+}
+function markDeletedFromItems(key,items){
+  markDeleted(key,(items||[]).map(x=>x&&x.id));
+}
+function applyDeletedIds(){
+  const deleted=ensureDeletedIds();
+  Object.entries(deleted).forEach(([key,ids])=>{
+    if(!Array.isArray(APP[key]))return;
+    const set=new Set(Object.keys(ids||{}));
+    if(set.size)APP[key]=APP[key].filter(x=>!x?.id||!set.has(x.id));
+  });
 }
 function sanitizeLoadedData(){
   // Corrige valores com ponto como decimal (ex: '2409.81' → '2.409,81')
@@ -1209,8 +1273,10 @@ function load(){
     const d=localStorage.getItem('fin_app');
     if(d)APP={...APP,...JSON.parse(d)};
     if(!APP.importacoesCartao)APP.importacoesCartao=[];
+    ensureDeletedIds();
+    applyDeletedIds();
     sanitizeLoadedData();
-    save(); // persiste os dados sanitizados
+    save({sync:false,markChange:false}); // startup local only; never push stale data to GS
   }catch(e){}
 }
 function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
@@ -2302,6 +2368,8 @@ function openClearCardConfirm(cartaoId){
 function confirmClearCard(){
   const cartaoId=document.getElementById('clr-card-id').value;
   const cart=APP.cartoes.find(c=>c.id===cartaoId);
+  markDeletedFromItems('comprasCartao',APP.comprasCartao.filter(c=>c.cartaoId===cartaoId));
+  markDeletedFromItems('parcelas',APP.parcelas.filter(p=>p.cartaoId===cartaoId));
   APP.comprasCartao=APP.comprasCartao.filter(c=>c.cartaoId!==cartaoId);
   APP.parcelas=APP.parcelas.filter(p=>p.cartaoId!==cartaoId);
   save();closeM('mod-clr-card');renderCartoes();
@@ -2348,6 +2416,7 @@ function buildCardPurchase(data,opt={}){
   const idx=APP.comprasCartao.findIndex(c=>c.id===id);
   if(idx>=0)APP.comprasCartao[idx]={...APP.comprasCartao[idx],...d};
   else APP.comprasCartao.push(d);
+  markDeletedFromItems('parcelas',APP.parcelas.filter(p=>p.compraId===id));
   APP.parcelas=APP.parcelas.filter(p=>p.compraId!==id);
   for(let i=0;i<qtd;i++){
     const ym=addMonthsYM(pfM,pfA,i);
@@ -2394,7 +2463,15 @@ function saveCompra(){
   buildCardPurchase({id:id||gid(),descricao:desc,cartaoId,pessoa:V('cp-pessoa'),categoria:V('cp-cat'),valorTotal:tot,qtdParcelas:qtd,dataCompra:V('cp-data'),primeiraFaturaMes:pfM,primeiraFaturaAno:pfA,status:V('cp-status'),obs:V('cp-obs')},{id:id||undefined});
   save();closeM('mod-compra');toast('Compra salva e parcelas geradas!','success');renderCartoes();
 }
-function delCompra(id){confirmDel('Excluir compra e todas as parcelas?',()=>{APP.comprasCartao=APP.comprasCartao.filter(c=>c.id!==id);APP.parcelas=APP.parcelas.filter(p=>p.compraId!==id);save();toast('Compra excluída','warning');renderCompras()})}
+function delCompra(id){
+  confirmDel('Excluir compra e todas as parcelas?',()=>{
+    markDeleted('comprasCartao',id);
+    markDeletedFromItems('parcelas',APP.parcelas.filter(p=>p.compraId===id));
+    APP.comprasCartao=APP.comprasCartao.filter(c=>c.id!==id);
+    APP.parcelas=APP.parcelas.filter(p=>p.compraId!==id);
+    save();toast('Compra excluída','warning');renderCompras();
+  });
+}
 
 // ═══ IMPORTAÇÃO DE EXTRATO DO CARTÃO ═══
 function setImportMsg(msg,type=''){
@@ -2435,7 +2512,10 @@ function openMImportCartao(){
 }
 async function getPdfLib(){
   if(window.pdfjsLib)return window.pdfjsLib;
-  if(window.PDFJS_READY)return await window.PDFJS_READY;
+  if(window.PDFJS_READY){
+    const lib=await window.PDFJS_READY.catch(()=>null);
+    if(lib)return lib;
+  }
   throw new Error('PDF.js não foi carregado. Verifique a conexão com a internet e tente novamente.')
 }
 async function extractPdfText(file,password=''){
@@ -3185,6 +3265,8 @@ let SYNC_DEBOUNCE=null;
 let SYNC_AUTO_INTERVAL=null;
 let SYNC_DIRTY=false;
 let LOADING_FROM_GS=false;
+let SYNC_IN_PROGRESS=false;
+const SYNC_ARRAY_KEYS=['receitas','investimentos','despesasFixas','despesasVariaveis','cartoes','comprasCartao','parcelas','tarefas','desejos','importacoesCartao'];
 
 function scheduleSyncToGS(){
   if(!APP.config.gsUrl||LOADING_FROM_GS)return;
@@ -3193,9 +3275,9 @@ function scheduleSyncToGS(){
   clearTimeout(SYNC_DEBOUNCE);
   SYNC_DEBOUNCE=setTimeout(async()=>{
     if(!navigator.onLine){setSyncUI('offline','Offline — aguardando conexão');return}
-    await syncGS();
-    SYNC_DIRTY=false;
-  },3000);
+    const ok=await syncGS();
+    if(ok)SYNC_DIRTY=false;
+  },1200);
 }
 
 function startAutoSync(){
@@ -3213,7 +3295,7 @@ function stopAutoSync(){
 }
 
 // ═══ GOOGLE SHEETS SYNC ═══
-async function syncGS(){
+async function syncGSLegacyDisabled(){
   if(!APP.config.gsUrl){toast('Configure a URL do Google Sheets primeiro!','warning');go('config');return}
   setSyncUI('spin','Sincronizando...');
   try{
@@ -3234,7 +3316,7 @@ async function syncGS(){
   }
 }
 
-async function loadFromGS(silent=false){
+async function loadFromGSLegacyDisabled(silent=false){
   if(!APP.config.gsUrl){if(!silent)toast('Configure a URL do Google Sheets primeiro!','warning');return}
   if(!silent)setSyncUI('spin','Carregando...');
   else setSyncUI('spin','Atualizando...');
@@ -3279,6 +3361,157 @@ async function loadFromGS(silent=false){
   }
 }
 
+function mergeGSData(d,opts={}){
+  const resyncLocal=opts.resyncLocal!==false;
+  const preferLocal=opts.preferLocal===true;
+  const localConfig=normalizeConfig(APP.config);
+  const remoteConfig=normalizeConfig(d.config);
+  const gsUrl=localConfig.gsUrl;
+  const deletedIds=mergeDeletedIds(localConfig.deletedIds,remoteConfig.deletedIds);
+  APP.config=d.config
+    ?(preferLocal?{...remoteConfig,...localConfig,deletedIds,gsUrl}:{...localConfig,...remoteConfig,deletedIds,gsUrl})
+    :{...localConfig,deletedIds,gsUrl};
+  let hasNewLocal=false;
+  SYNC_ARRAY_KEYS.forEach(k=>{
+    const deleted=new Set(Object.keys(APP.config.deletedIds?.[k]||{}));
+    const remote=(Array.isArray(d[k])?d[k]:[]).filter(x=>!x?.id||!deleted.has(x.id));
+    const local=(Array.isArray(APP[k])?APP[k]:[]).filter(x=>!x?.id||!deleted.has(x.id));
+    if(!remote.length){
+      if(local.length)hasNewLocal=true;
+      APP[k]=local;
+      return;
+    }
+    const localById=new Map(local.filter(x=>x&&x.id).map(x=>[x.id,x]));
+    const remoteIds=new Set(remote.filter(x=>x&&x.id).map(x=>x.id));
+    const merged=remote.map(x=>{
+      if(!preferLocal||!x?.id)return x;
+      return localById.get(x.id)||x;
+    });
+    const localOnly=local.filter(x=>x&&x.id&&!remoteIds.has(x.id));
+    if(localOnly.length)hasNewLocal=true;
+    APP[k]=[...merged,...localOnly];
+  });
+  applyDeletedIds();
+  sanitizeLoadedData();
+  save({sync:false,markChange:false});
+  updatePersonUI();syncAuthNamesFromConfig();updateLastChangeUI();
+  if(hasNewLocal&&resyncLocal)scheduleSyncToGS();
+  return hasNewLocal;
+}
+
+async function fetchGSData(){
+  const r=await fetch(APP.config.gsUrl+'?action=getData',{method:'GET',mode:'cors'});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  if(!j.success||!j.data)throw new Error(j.error||'Sem dados na planilha');
+  return j.data;
+}
+
+function wait(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+
+function remoteHasLocalData(d){
+  const hasIds=SYNC_ARRAY_KEYS.every(k=>{
+    const local=Array.isArray(APP[k])?APP[k]:[];
+    const remote=Array.isArray(d[k])?d[k]:[];
+    const remoteIds=new Set(remote.filter(x=>x&&x.id).map(x=>x.id));
+    return local.every(x=>!x?.id||remoteIds.has(x.id));
+  });
+  if(!hasIds)return false;
+  const remoteExcludesDeleted=SYNC_ARRAY_KEYS.every(k=>{
+    const deleted=Object.keys(APP.config?.deletedIds?.[k]||{});
+    if(!deleted.length)return true;
+    const remoteIds=new Set((Array.isArray(d[k])?d[k]:[]).filter(x=>x&&x.id).map(x=>x.id));
+    return deleted.every(id=>!remoteIds.has(id));
+  });
+  if(!remoteExcludesDeleted)return false;
+  const localChange=APP.config?.lastChange?.at;
+  const remoteChange=d.config?.lastChange?.at;
+  return !localChange||!remoteChange||localChange===remoteChange;
+}
+
+async function postGSText(payload){
+  try{
+    const r=await fetch(APP.config.gsUrl,{
+      method:'POST',
+      mode:'cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:payload
+    });
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const txt=await r.text();
+    const j=txt?JSON.parse(txt):{success:true};
+    if(j.success===false)throw new Error(j.error||'Apps Script retornou erro');
+    return {confirmed:true};
+  }catch(corsError){
+    await fetch(APP.config.gsUrl,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:payload
+    });
+    await wait(1200);
+    try{
+      const d=await fetchGSData();
+      if(remoteHasLocalData(d)){
+        mergeGSData(d,{resyncLocal:false,preferLocal:true});
+        return {confirmed:true,verified:true};
+      }
+    }catch(e){}
+    return {confirmed:false,error:corsError};
+  }
+}
+
+async function syncGS(opts={}){
+  if(!APP.config.gsUrl){toast('Configure a URL do Google Sheets primeiro!','warning');go('config');return false}
+  if(SYNC_IN_PROGRESS)return false;
+  SYNC_IN_PROGRESS=true;
+  setSyncUI('spin','Sincronizando...');
+  try{
+    if(opts.pullFirst!==false){
+      const d=await fetchGSData();
+      mergeGSData(d,{resyncLocal:false,preferLocal:SYNC_DIRTY});
+    }
+    const result=await postGSText(JSON.stringify({action:'saveAll',data:APP}));
+    if(result.confirmed){
+      SYNC_DIRTY=false;
+      clearTimeout(SYNC_DEBOUNCE);
+      setSyncUI('ok','Sync: '+new Date().toLocaleTimeString('pt-BR'));
+      toast(result.verified?'Dados enviados e confirmados no Google Sheets!':'Dados enviados para o Google Sheets!','success');
+      return true;
+    }
+    setSyncUI('dirty','A confirmar...');
+    toast('Envio feito sem confirmacao do Google. Clique em Carregar ou Testar para conferir.','warning',5000);
+    return false;
+  }catch(e){
+    setSyncUI(navigator.onLine?'':'offline',navigator.onLine?'Erro GS':'Offline');
+    toast('Erro ao sincronizar: '+e.message,'error',5000);
+    return false;
+  }finally{
+    SYNC_IN_PROGRESS=false;
+  }
+}
+
+async function loadFromGS(silent=false,opts={}){
+  if(!APP.config.gsUrl){if(!silent)toast('Configure a URL do Google Sheets primeiro!','warning');return false}
+  if(!silent)setSyncUI('spin','Carregando...');
+  else setSyncUI('spin','Atualizando...');
+  LOADING_FROM_GS=true;
+  try{
+    const d=await fetchGSData();
+    mergeGSData(d,{resyncLocal:opts.resyncLocal!==false,preferLocal:opts.preferLocal===true});
+    setSyncUI('ok','Sync: '+new Date().toLocaleTimeString('pt-BR'));
+    if(!silent)toast('Dados carregados do Google Sheets!','success');
+    if(opts.render!==false)render(cMod);
+    return true;
+  }catch(e){
+    setSyncUI(navigator.onLine?'':'offline',navigator.onLine?'Erro GS':'Offline');
+    if(!silent)toast('Erro ao carregar: '+e.message,'error');
+    return false;
+  }finally{
+    LOADING_FROM_GS=false;
+  }
+}
+
 async function testarConexao(){
   const url=document.getElementById('cfg-gs').value.trim();
   if(!url){toast('Cole a URL primeiro','warning');return}
@@ -3297,8 +3530,14 @@ const SPREADSHEET_ID_DISPLAY='16KnYNyD8...R84g';
 
 // ═══ EXPORT / IMPORT ═══
 function exportJSON(){const b=new Blob([JSON.stringify(APP,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`financas_${new Date().toISOString().split('T')[0]}.json`;a.click();toast('Dados exportados!','success')}
-function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{APP={...APP,...JSON.parse(e.target.result)};if(!APP.importacoesCartao)APP.importacoesCartao=[];save();updatePersonUI();syncAuthNamesFromConfig();toast('Dados importados!','success');render(cMod);}catch{toast('Arquivo JSON inválido','error');}};r.readAsText(f)}
-function clearAll(){if(!confirm('ATENÇÃO: Isso apagará TODOS os dados. Continuar?'))return;const cfg={...APP.config};APP={config:cfg,receitas:[],investimentos:[],contas:[],despesasFixas:[],despesasVariaveis:[],cartoes:[],comprasCartao:[],parcelas:[],tarefas:[],desejos:[],importacoesCartao:[]};save();toast('Dados apagados','warning');render(cMod)}
+function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{APP={...APP,...JSON.parse(e.target.result)};if(!APP.importacoesCartao)APP.importacoesCartao=[];ensureDeletedIds();applyDeletedIds();save();updatePersonUI();syncAuthNamesFromConfig();toast('Dados importados!','success');render(cMod);}catch{toast('Arquivo JSON inválido','error');}};r.readAsText(f)}
+function clearAll(){
+  if(!confirm('ATENÇÃO: Isso apagará TODOS os dados. Continuar?'))return;
+  SYNC_ARRAY_KEYS.forEach(k=>markDeletedFromItems(k,APP[k]));
+  const cfg={...APP.config};
+  APP={config:cfg,receitas:[],investimentos:[],contas:[],despesasFixas:[],despesasVariaveis:[],cartoes:[],comprasCartao:[],parcelas:[],tarefas:[],desejos:[],importacoesCartao:[]};
+  save();toast('Dados apagados','warning');render(cMod);
+}
 
 // ═══ RECORRÊNCIA DESPESAS HELPER ═══
 function despRecToggle(p){
@@ -3329,10 +3568,12 @@ function ajustarGrupo(arr,item,ateMes,ateAno){
   const gId=item.recGrupoId;
   const endNum=+ateAno*12+ +ateMes;
   let removed=0;
+  const removedIds=[];
   for(let i=arr.length-1;i>=0;i--){
     const x=arr[i];
-    if(x.recGrupoId===gId&&(+x.ano*12+ +x.mes)>endNum&&x.status!=='pago'){arr.splice(i,1);removed++;}
+    if(x.recGrupoId===gId&&(+x.ano*12+ +x.mes)>endNum&&x.status!=='pago'){if(x.id)removedIds.push(x.id);arr.splice(i,1);removed++;}
   }
+  if(removedIds.length)markDeleted(arr===APP.despesasFixas?'despesasFixas':'despesasVariaveis',removedIds);
   const grupo=arr.filter(x=>x.recGrupoId===gId);
   const last=grupo.length?grupo.reduce((mx,x)=>(+x.ano*12+ +x.mes)>(+mx.ano*12+ +mx.mes)?x:mx,grupo[0]):item;
   let added=0;
@@ -3418,6 +3659,11 @@ function upsert(key,data,id){const arr=APP[key];if(id){const idx=arr.findIndex(x
 function setStatus(key,id,status){const item=APP[key].find(x=>x.id===id);if(item){item.status=status;save();toast('Status atualizado!','success');render(cMod)}}
 function delConfirm(key,id,name,withRelated){
   confirmDel(`Excluir "${name}"?`,()=>{
+    markDeleted(key,id);
+    if(key==='cartoes'){
+      markDeletedFromItems('comprasCartao',APP.comprasCartao.filter(c=>c.cartaoId===id));
+      markDeletedFromItems('parcelas',APP.parcelas.filter(p=>p.cartaoId===id));
+    }
     APP[key]=APP[key].filter(x=>x.id!==id);
     if(key==='cartoes'){APP.comprasCartao=APP.comprasCartao.filter(c=>c.cartaoId!==id);APP.parcelas=APP.parcelas.filter(p=>p.cartaoId!==id);}
     save();toast('Item excluído','warning');render(cMod);
@@ -3488,7 +3734,7 @@ function init(){
   window.addEventListener('online',()=>{
     if(!APP.config.gsUrl)return;
     toast('📶 Conexão restaurada — sincronizando...','success',2500);
-    if(SYNC_DIRTY)syncGS().then(()=>{SYNC_DIRTY=false;});
+    if(SYNC_DIRTY)syncGS().then(ok=>{if(ok)SYNC_DIRTY=false;});
     else loadFromGS(true);
   });
 
@@ -3501,8 +3747,21 @@ function init(){
   // Visibilidade: quando volta ao app no celular, sincroniza
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden||!APP.config.gsUrl||!navigator.onLine)return;
-    if(SYNC_DIRTY)syncGS().then(()=>{SYNC_DIRTY=false;});
+    if(SYNC_DIRTY)syncGS().then(ok=>{if(ok)SYNC_DIRTY=false;});
     else loadFromGS(true);
+  });
+
+  window.addEventListener('pagehide',()=>{
+    if(!APP.config.gsUrl||!SYNC_DIRTY||!navigator.onLine)return;
+    try{
+      fetch(APP.config.gsUrl,{
+        method:'POST',
+        mode:'no-cors',
+        headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({action:'saveAll',data:APP}),
+        keepalive:true
+      });
+    }catch(e){}
   });
 }
 init();
