@@ -764,7 +764,7 @@ body.auth-locked .auth-screen{display:flex}
       <div class="fg"><label>Pessoa *</label><select id="rec-pessoa"></select></div>
       <div class="fg s2"><label>Descrição *</label><input type="text" id="rec-desc" placeholder="Ex: Salário março"></div>
       <div class="fg"><label>Valor (R$) *</label><input type="text" id="rec-valor" placeholder="0,00" oninput="mask(this)"></div>
-      <div class="fg"><label>Data de Recebimento</label><input type="date" id="rec-data"></div>
+      <div class="fg"><label>Dia</label><input type="number" id="rec-dia" min="1" max="31" placeholder="Dia (1-31)" style="max-width:120px"></div>
       <div class="fg"><label>Mês *</label><select id="rec-mes" onchange="recUpdatePreview()"></select></div>
       <div class="fg"><label>Ano *</label><select id="rec-ano" onchange="recUpdatePreview()"></select></div>
       <div class="fg s2">
@@ -1746,12 +1746,13 @@ function renderTabela(){
     return true;
   });
 
-  // ── Agrupa itens recorrentes por recGrupoId ──
+  // ── Agrupa itens recorrentes por recGrupoId (ou chave automática para dados legados) ──
   const recGroups={};const singles=[];
   rawItems.forEach(d=>{
-    if(d.recorrente==='sim'&&d.recGrupoId){
-      if(!recGroups[d.recGrupoId])recGroups[d.recGrupoId]={...d,_recGrupoId:d.recGrupoId,_items:[]};
-      recGroups[d.recGrupoId]._items.push(d);
+    if(d.recorrente==='sim'){
+      const _gk=d.recGrupoId||`_auto_${d._t}_${(d.descricao||'').replace(/\s/g,'_')}_${d.pessoa}_${d.valor}`;
+      if(!recGroups[_gk])recGroups[_gk]={...d,_recGrupoId:_gk,_items:[]};
+      recGroups[_gk]._items.push(d);
     }else{
       if(meses.some(m=>+d.mes===m&&+d.ano===cA))singles.push(d);
     }
@@ -1815,10 +1816,11 @@ function renderTabela(){
     const rGroups={};const rSingles=[];
     // Usa TODAS as receitas para encontrar o último item de cada grupo
     APP.receitas.forEach(r=>{
-      if(r.recorrente==='sim'&&r.recGrupoId){
-        if(!rGroups[r.recGrupoId])rGroups[r.recGrupoId]={...r,_recGrupoId:r.recGrupoId,_items:[],_allItems:[]};
-        rGroups[r.recGrupoId]._allItems.push(r);
-        if(meses.some(m=>+r.mes===m&&+r.ano===cA))rGroups[r.recGrupoId]._items.push(r);
+      if(r.recorrente==='sim'){
+        const _gk=r.recGrupoId||`_auto_${r.tipo}_${(r.descricao||'').replace(/\s/g,'_')}_${r.pessoa}_${r.valor}`;
+        if(!rGroups[_gk])rGroups[_gk]={...r,_recGrupoId:_gk,_items:[],_allItems:[]};
+        rGroups[_gk]._allItems.push(r);
+        if(meses.some(m=>+r.mes===m&&+r.ano===cA))rGroups[_gk]._items.push(r);
       }else if(meses.some(m=>+r.mes===m&&+r.ano===cA)){
         rSingles.push(r);
       }
@@ -1847,7 +1849,7 @@ function renderTabela(){
           }
         });
         const desc=r.descricao||(TIPO_REC_LABELS[r.tipo]||r.tipo)||'—';
-        const data=r.data?fmtDate(r.data):'—';
+        const _dia=recDia(r);const data=_dia?'Dia '+_dia:'—';
         html+=`<tr><td style="padding-left:1.4rem;font-size:.82rem">${desc}${recBadge}</td><td>${r.pessoa?bdgPessoa(r.pessoa):'—'}</td><td style="font-size:.78rem">${data}</td><td>—</td>${cells.join('')}<td class="tr fw6 text-green">${brl(rTotal)}</td></tr>`;
       });
     }else{
@@ -1924,7 +1926,7 @@ function renderReceitas(){
   const p1=items.filter(r=>r.pessoa==='p1').reduce((s,r)=>s+parseBRL(r.valor),0);
   const p2=items.filter(r=>r.pessoa==='p2').reduce((s,r)=>s+parseBRL(r.valor),0);
   document.getElementById('rec-sum').innerHTML=[sc('💰','Total Receitas',tot,'green'),sc('👤',APP.config.p1,p1,'blue'),sc('👤',APP.config.p2,p2,'purple')].join('');
-  document.getElementById('rec-tbody').innerHTML=items.length?items.map(r=>`<tr><td>${TIPO_REC_LABELS[r.tipo]||r.tipo}</td><td>${r.descricao}</td><td>${bdgPessoa(r.pessoa)}</td><td class="fw6 text-green">${brl(parseBRL(r.valor))}</td><td>${fmtDate(r.data)}</td><td>${r.recorrente==='sim'?'<span class="badge badge-blue">Sim</span>':'Não'}</td><td>${acBtns(`editReceita('${r.id}')`,`delConfirm('receitas','${r.id}','${r.descricao}')`)}</td></tr>`).join(''):`<tr><td colspan="99"><div class="empty"><div class="empty-icon">💰</div><div class="empty-text">Nenhuma receita neste mês.<br><button class="btn btn-primary mt1" onclick="openMReceita(null)">+ Adicionar Receita</button></div></div></td></tr>`;
+  document.getElementById('rec-tbody').innerHTML=items.length?items.map(r=>{const dia=recDia(r);return`<tr><td>${TIPO_REC_LABELS[r.tipo]||r.tipo}</td><td>${r.descricao}</td><td>${bdgPessoa(r.pessoa)}</td><td class="fw6 text-green">${brl(parseBRL(r.valor))}</td><td>${dia?'Dia '+dia:'—'}</td><td>${r.recorrente==='sim'?'<span class="badge badge-blue">Sim</span>':'Não'}</td><td>${acBtns(`editReceita('${r.id}')`,`delConfirm('receitas','${r.id}','${r.descricao}')`)}</td></tr>`;}).join(''):`<tr><td colspan="99"><div class="empty"><div class="empty-icon">💰</div><div class="empty-text">Nenhuma receita neste mês.<br><button class="btn btn-primary mt1" onclick="openMReceita(null)">+ Adicionar Receita</button></div></div></td></tr>`;
   document.getElementById('rec-tfoot').innerHTML=`<tr><td colspan="3"><strong>Total</strong></td><td class="fw7 text-green">${brl(tot)}</td><td colspan="3"></td></tr>`;
 }
 
@@ -1936,7 +1938,7 @@ function openMReceita(item){
   document.getElementById('rec-pessoa').value=item?.pessoa||'p1';
   document.getElementById('rec-desc').value=item?.descricao||'';
   document.getElementById('rec-valor').value=item?.valor||'';
-  document.getElementById('rec-data').value=item?.data||'';
+  document.getElementById('rec-dia').value=recDia(item)||'';
   const ck=document.getElementById('rec-rec');
   ck.checked=item?.recorrente==='sim';
   // Painel de repetição só faz sentido em criação nova
@@ -1980,12 +1982,12 @@ function saveReceita(){
     const grupoId=gid();
     const meses=recGetMeses();
     meses.forEach(({m,a})=>{
-      APP.receitas.push({id:gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,data:V('rec-data'),mes:m,ano:a,recorrente:'sim',recGrupoId:grupoId,obs:V('rec-obs')});
+      APP.receitas.push({id:gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,dia:V('rec-dia'),mes:m,ano:a,recorrente:'sim',recGrupoId:grupoId,obs:V('rec-obs')});
     });
     save();closeM('mod-receita');
     toast(`🔁 ${meses.length} receita(s) criada(s) automaticamente!`,'success',4000);
   }else{
-    const d={id:id||gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,data:V('rec-data'),mes:V('rec-mes'),ano:V('rec-ano'),recorrente:isRec?'sim':'nao',obs:V('rec-obs')};
+    const d={id:id||gid(),tipo:V('rec-tipo'),pessoa:V('rec-pessoa'),descricao:desc,valor:val,dia:V('rec-dia'),mes:V('rec-mes'),ano:V('rec-ano'),recorrente:isRec?'sim':'nao',obs:V('rec-obs')};
     upsert('receitas',d,id);
     save();closeM('mod-receita');toast('Receita salva!','success');
   }
@@ -2127,6 +2129,12 @@ function openMDV(item){
   fillMA('dv-mes','dv-ano',_dvD.getMonth()+1,_dvD.getFullYear());
   despRecUpdatePreview('dv');
   openM('mod-dv');
+}
+// Extrai o dia de recebimento de uma receita (suporta campo novo 'dia' e legado 'data')
+function recDia(r){
+  if(r.dia)return +r.dia;
+  if(r.data){const d=new Date((r.data.includes('-')?r.data+'T00:00':r.data));if(!isNaN(d))return d.getDate();}
+  return'';
 }
 function syncDvMesAno(){
   const v=document.getElementById('dv-data').value;
